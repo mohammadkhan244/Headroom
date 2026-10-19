@@ -222,6 +222,18 @@ body{
 .eq-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--fg)}
 .eq-row span:last-child{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--green)}
 
+/* ── Passcode screen ────────────────────────────────── */
+.pc-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
+.pc-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 28px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.pc-logo{font-size:40px;margin-bottom:6px}
+.pc-title{font-size:20px;font-weight:700;color:var(--fg);margin-bottom:4px}
+.pc-sub{font-size:13px;color:var(--fg2);margin-bottom:20px}
+.pc-input{width:100%;background:var(--surface2);border:1.5px solid var(--border);color:var(--fg);padding:14px;border-radius:10px;font-size:22px;font-family:'JetBrains Mono',monospace;text-align:center;letter-spacing:.2em;margin-bottom:10px;-webkit-appearance:none}
+.pc-input:focus{outline:none;border-color:var(--accent)}
+.pc-input.err{border-color:var(--red)}
+.pc-btn{width:100%;background:var(--accent);color:#000;border:none;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+.pc-err{color:var(--red);font-size:12px;margin-top:8px}
+
 /* ── Sync chip ──────────────────────────────────────── */
 .sync-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:.15s;user-select:none;-webkit-tap-highlight-color:transparent;flex-shrink:0}
 .sync-chip.idle{background:var(--green-bg);color:var(--green)}
@@ -298,6 +310,19 @@ body{
   .hist-search{grid-column:1 / -1}
 }
 </style>
+
+<div id="pcScreen" class="pc-screen" hidden>
+  <div class="pc-card">
+    <div class="pc-logo">📈</div>
+    <div class="pc-title">Headroom</div>
+    <div class="pc-sub">Enter your passcode to continue</div>
+    <input type="password" id="pcInput" class="pc-input"
+           placeholder="••••••" autocomplete="current-password"
+           onkeydown="if(event.key==='Enter')submitPasscode()">
+    <button class="pc-btn" onclick="submitPasscode()">Unlock</button>
+    <div class="pc-err" id="pcErr" hidden>Incorrect — try again</div>
+  </div>
+</div>
 
 <header class="header">
   <div>
@@ -497,17 +522,13 @@ body{
         <input type="text" class="form-input" id="sFiCity" placeholder="Columbus, OH">
       </div>
 
-      <div class="sett-sep">Google Sheets Sync</div>
-      <div class="form-group">
-        <label class="form-label">Apps Script URL <span style="font-weight:400;color:var(--fg2)">(web app)</span></label>
-        <input type="url" class="form-input" id="sSheetsUrl" placeholder="https://script.google.com/macros/s/…/exec">
-        <div style="font-size:11px;color:var(--fg2);margin-top:4px">Paste your deployed Apps Script web app URL. Expenses sync automatically.</div>
-      </div>
+      <div class="sett-sep">Sync</div>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <button class="sec-btn" onclick="syncNow()" style="flex:1">☁ Sync now</button>
         <button class="sec-btn" onclick="clearCacheData()" style="flex:1">🗑 Clear local data</button>
       </div>
-      <div id="syncStatusLine" style="font-size:11px;color:var(--fg2);margin-bottom:14px"></div>
+      <button class="sec-btn" style="width:100%;margin-bottom:6px" onclick="forceRefresh()">🔄 Force Refresh</button>
+      <button class="sec-btn" style="width:100%;margin-bottom:14px;color:var(--red)" onclick="lockApp()">🔒 Lock App</button>
 
       <button class="submit-btn" onclick="saveSettingsForm()">Save Settings</button>
       <button class="sec-btn" style="width:100%;margin-top:8px" onclick="resetSettings()">↩ Reset to Path Robotics Defaults</button>
@@ -695,7 +716,11 @@ function init() {
   const t = (() => { try{return localStorage.getItem('mo_theme')||'';}catch{return '';} })();
   if(t) document.documentElement.dataset.theme = t;
   updateThemeBtn();
+  if (!getPasscode()) { showPasscodeScreen(); return; }
+  finishInit();
+}
 
+function finishInit() {
   buildMonthSels();
   document.getElementById('monthSel').value = selMonth;
   buildCatGrid();
@@ -713,20 +738,17 @@ function init() {
   document.getElementById('histSearch').addEventListener('input', renderHist);
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
 
-  // Swipe-to-delete in history
   initSwipeDelete();
 
-  // Bidirectional sync
   updateSyncChip();
   schedulePeriodicSync();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { flushOutbox().then(() => fetchFromSheet()); }
+    if (document.visibilityState === 'visible') flushOutbox().then(() => fetchFromSheet());
   });
   window.addEventListener('online', () => { updateSyncChip(); flushOutbox().then(() => fetchFromSheet()); });
   window.addEventListener('offline', () => setSyncState('offline'));
 
-  // Kick off initial sync in background
-  if (getSheetsUrl()) flushOutbox().then(() => fetchFromSheet());
+  flushOutbox().then(() => fetchFromSheet());
 }
 
 // ── TABS ──────────────────────────────────────────────────────────
@@ -1441,17 +1463,10 @@ function renderSettings() {
   document.getElementById('sMonthlyNet').value  = NET_MONTHLY;
   document.getElementById('sFiTarget').value    = FI_TARGET;
   document.getElementById('sFiCity').value      = FI_CITY;
-  document.getElementById('sSheetsUrl').value   = getSheetsUrl();
   document.getElementById('sAnnualNet').oninput = function() {
     const v = parseFloat(this.value);
     if (v > 0) document.getElementById('sMonthlyNet').value = Math.round(v/12);
   };
-  const outboxCount = getOutbox().length;
-  const lastSync = (() => { try { return localStorage.getItem('mo_last_sync') || ''; } catch { return ''; } })();
-  const statusParts = [];
-  if (outboxCount > 0) statusParts.push(`${outboxCount} change${outboxCount>1?'s':''} queued to upload`);
-  if (lastSync) statusParts.push(`Last sync: ${new Date(lastSync).toLocaleString()}`);
-  document.getElementById('syncStatusLine').textContent = statusParts.join(' · ');
 }
 
 function saveSettingsForm() {
@@ -1460,8 +1475,7 @@ function saveSettingsForm() {
   const netMonthly  = parseFloat(document.getElementById('sMonthlyNet').value)  || Math.round(netAnnual/12);
   const fiTarget    = parseFloat(document.getElementById('sFiTarget').value)    || DEFAULTS.fiTarget;
   const fiCity      = document.getElementById('sFiCity').value.trim()           || DEFAULTS.fiCity;
-  const sheetsUrl   = document.getElementById('sSheetsUrl').value.trim();
-  applySettings({ grossAnnual, netAnnual, netMonthly, fiTarget, fiCity, sheetsUrl });
+  applySettings({ grossAnnual, netAnnual, netMonthly, fiTarget, fiCity });
   const ok = document.getElementById('settOk');
   ok.textContent='✅ Settings saved!'; ok.style.display='block';
   setTimeout(()=>{ ok.style.display='none'; }, 2500);
@@ -1495,8 +1509,6 @@ function queueOp(op) {
 }
 
 async function flushOutbox() {
-  const url = getSheetsUrl();
-  if (!url) return;
   if (!navigator.onLine) { setSyncState('offline'); return; }
   const q = getOutbox();
   if (!q.length) { setSyncState('idle'); return; }
@@ -1505,15 +1517,25 @@ async function flushOutbox() {
   const done = [];
   for (const op of q) {
     try {
-      await fetch(url, {
+      const res = await fetch(getSyncUrl(), {
         method: 'POST',
+        headers: { ...syncHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(op),
         signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
       });
-      done.push(op._seq);
-      _retryDelay = 5000;
+      if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
+      const json = await res.json().catch(() => ({}));
+      if (json.ok === true) {
+        done.push(op._seq);
+        _retryDelay = 5000;
+      } else {
+        // {ok:false} or Apps Script error — keep queued, show chip error, retry
+        setSyncState('error');
+        scheduleRetry();
+        break;
+      }
     } catch {
-      break; // stop on network failure, retry later
+      break; // network failure — retry later
     }
   }
 
@@ -1525,26 +1547,39 @@ async function flushOutbox() {
 }
 
 async function fetchFromSheet() {
-  const url = getSheetsUrl();
-  if (!url) return;
   setSyncState('syncing');
   try {
     const ctrl = AbortSignal.timeout ? AbortSignal.timeout(12000) : undefined;
-    const r = await fetch(url, ctrl ? { signal: ctrl } : {});
-    const rows = await r.json();
-    if (Array.isArray(rows) && rows.length > 0) {
-      const normalized = rows.map(row => ({
-        id:        String(row.id || ''),
-        date:      String(row.date || ''),
-        category:  String(row.category || 'Other'),
-        amount:    parseFloat(row.amount) || 0,
-        note:      String(row.note || ''),
-        freq:      String(row.freq || 'monthly'),
-        createdAt: +row.createdAt || 0
-      })).filter(r => r.id && r.date);
-
+    const res = await fetch(getSyncUrl() + '?t=' + Date.now(), {
+      cache: 'no-store',
+      headers: syncHeaders(),
+      ...(ctrl ? { signal: ctrl } : {})
+    });
+    if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
+    const payload = await res.json();
+    // Only replace local data on confirmed success
+    if (res.ok && payload.ok === true && Array.isArray(payload.rows)) {
+      const normalized = payload.rows.map(row => {
+        const cats = row.categories
+          ? String(row.categories).split('; ').map(s=>s.trim()).filter(Boolean)
+          : [String(row.category||'Other')];
+        return {
+          id:          String(row.id||''),
+          date:        String(row.date||''),
+          categories:  cats,
+          category:    cats[0]||'Other',
+          amount:      parseFloat(row.amount)||0,
+          note:        String(row.note||''),
+          freq:        String(row.freq||'monthly'),
+          type:        String(row.type||'expense'),
+          reimbursable: row.reimbursable===true || row.reimbursable==='TRUE',
+          reimb_status: String(row.reimb_status||'pending'),
+          recurring_id: String(row.recurring_id||'')||null,
+          createdAt:   +row.createdAt||0
+        };
+      }).filter(r => r.id && r.date);
       save(normalized);
-      replayOutbox(); // re-apply any pending local changes on top
+      replayOutbox();
       buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
     }
     try { localStorage.setItem('mo_last_sync', new Date().toISOString()); } catch {}
@@ -1597,14 +1632,13 @@ function scheduleRetry() {
 
 function schedulePeriodicSync() {
   setInterval(() => {
-    if (document.visibilityState === 'visible' && getSheetsUrl()) {
+    if (document.visibilityState === 'visible') {
       flushOutbox().then(() => fetchFromSheet());
     }
   }, 60000);
 }
 
 function syncNow() {
-  if (!getSheetsUrl()) { showToast('Paste your Apps Script URL in Settings first', 'error'); return; }
   setSyncState('syncing');
   flushOutbox().then(() => fetchFromSheet()).catch(() => { setSyncState('error'); });
 }
@@ -1621,10 +1655,53 @@ function clearCacheData() {
   showToast('Local data cleared. Tap Sync now to reload from Sheet.');
 }
 
-// ── SHEETS URL ────────────────────────────────────────────────────
-function getSheetsUrl() {
-  try { return JSON.parse(localStorage.getItem('mo_settings')||'{}').sheetsUrl || ''; } catch { return ''; }
+// ── PROXY / AUTH ─────────────────────────────────────────────────
+function getSyncUrl()  { return '/api/sheet'; }
+function getPasscode() { try { return localStorage.getItem('mo_passcode')||''; } catch { return ''; } }
+function clearPasscode(){ try { localStorage.removeItem('mo_passcode'); } catch {} }
+function syncHeaders() { return { 'x-passcode': getPasscode() }; }
+
+function showPasscodeScreen() {
+  document.getElementById('pcScreen').hidden = false;
+  document.getElementById('pcErr').hidden    = true;
+  document.getElementById('pcInput').value   = '';
+  document.getElementById('pcInput').classList.remove('err');
+  setTimeout(() => document.getElementById('pcInput').focus(), 80);
 }
+function hidePasscodeScreen() { document.getElementById('pcScreen').hidden = true; }
+
+async function submitPasscode() {
+  const p = document.getElementById('pcInput').value.trim();
+  if (!p) return;
+  document.getElementById('pcErr').hidden = true;
+  document.getElementById('pcInput').classList.remove('err');
+  try {
+    const r = await fetch(getSyncUrl() + '?t=' + Date.now(), {
+      cache: 'no-store', headers: { 'x-passcode': p }
+    });
+    if (r.status === 401) {
+      document.getElementById('pcInput').classList.add('err');
+      document.getElementById('pcErr').hidden = false;
+      return;
+    }
+    try { localStorage.setItem('mo_passcode', p); } catch {}
+    hidePasscodeScreen();
+    finishInit();
+  } catch {
+    document.getElementById('pcErr').textContent = 'Cannot reach server — check connection';
+    document.getElementById('pcErr').hidden = false;
+  }
+}
+
+async function forceRefresh() {
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) await r.unregister();
+  }
+  if ('caches' in window) { const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
+  location.reload(true);
+}
+function lockApp() { clearPasscode(); location.reload(); }
 
 // ── PWA SERVICE WORKER ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
