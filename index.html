@@ -1511,6 +1511,7 @@ function resetSettings() {
 // ── SYNC ENGINE ───────────────────────────────────────────────────
 const OUTBOX_KEY = 'mo_outbox';
 let _syncState = 'idle';
+let _syncMsg   = '';
 let _syncTimer = null;
 let _retryDelay = 5000;
 
@@ -1547,13 +1548,14 @@ async function flushOutbox() {
         done.push(op._seq);
         _retryDelay = 5000;
       } else {
-        // {ok:false} or Apps Script error — keep queued, show chip error, retry
-        setSyncState('error');
+        const errMsg = json.error ? `Sheet error: ${json.error}` : 'Server rejected the write';
+        setSyncState('error', 0, errMsg);
         scheduleRetry();
         break;
       }
-    } catch {
-      break; // network failure — retry later
+    } catch(err) {
+      // network failure — keep queued, retry later (no error chip, already offline or transient)
+      break;
     }
   }
 
@@ -1574,37 +1576,53 @@ async function fetchFromSheet() {
       ...(ctrl ? { signal: ctrl } : {})
     });
     if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
-    const payload = await res.json();
-    // Only replace local data on confirmed success
-    if (res.ok && payload.ok === true && Array.isArray(payload.rows)) {
-      const normalized = payload.rows.map(row => {
-        const cats = row.categories
-          ? String(row.categories).split('; ').map(s=>s.trim()).filter(Boolean)
-          : [String(row.category||'Other')];
-        return {
-          id:          String(row.id||''),
-          date:        String(row.date||''),
-          categories:  cats,
-          category:    cats[0]||'Other',
-          amount:      parseFloat(row.amount)||0,
-          note:        String(row.note||''),
-          freq:        String(row.freq||'monthly'),
-          type:        String(row.type||'expense'),
-          reimbursable: row.reimbursable===true || row.reimbursable==='TRUE',
-          reimb_status: String(row.reimb_status||'pending'),
-          recurring_id: String(row.recurring_id||'')||null,
-          createdAt:   +row.createdAt||0
-        };
-      }).filter(r => r.id && r.date);
-      save(normalized);
-      replayOutbox();
-      buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
+    if (!res.ok) {
+      setSyncState('error', 0, `Server returned ${res.status}`);
+      return;
     }
+    const payload = await res.json().catch(() => null);
+    if (!payload) {
+      setSyncState('error', 0, 'Invalid response from server');
+      return;
+    }
+    if (payload.ok !== true) {
+      setSyncState('error', 0, payload.error ? `Sheet error: ${payload.error}` : 'Sheet returned an error');
+      return;
+    }
+    if (!Array.isArray(payload.rows)) {
+      setSyncState('error', 0, 'No rows in response');
+      return;
+    }
+    const normalized = payload.rows.map(row => {
+      const cats = row.categories
+        ? String(row.categories).split('; ').map(s=>s.trim()).filter(Boolean)
+        : [String(row.category||'Other')];
+      return {
+        id:          String(row.id||''),
+        date:        String(row.date||''),
+        categories:  cats,
+        category:    cats[0]||'Other',
+        amount:      parseFloat(row.amount)||0,
+        note:        String(row.note||''),
+        freq:        String(row.freq||'monthly'),
+        type:        String(row.type||'expense'),
+        reimbursable: row.reimbursable===true || row.reimbursable==='TRUE',
+        reimb_status: String(row.reimb_status||'pending'),
+        recurring_id: String(row.recurring_id||'')||null,
+        createdAt:   +row.createdAt||0
+      };
+    }).filter(r => r.id && r.date);
+    save(normalized);
+    replayOutbox();
+    buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
     try { localStorage.setItem('mo_last_sync', new Date().toISOString()); } catch {}
     const q = getOutbox().length;
     setSyncState(q ? 'queued' : 'idle', q);
-  } catch {
-    setSyncState(navigator.onLine ? 'error' : 'offline');
+  } catch(err) {
+    if (!navigator.onLine) { setSyncState('offline'); return; }
+    const msg = (err.name === 'TimeoutError' || err.name === 'AbortError')
+      ? 'Request timed out (12s)' : 'Network error — check connection';
+    setSyncState('error', 0, msg);
   }
 }
 
@@ -1620,8 +1638,15 @@ function replayOutbox() {
   save(Object.values(byId));
 }
 
-function setSyncState(state, count = 0) {
+function setSyncState(state, count = 0, msg = '') {
+  const wasError = _syncState === 'error';
   _syncState = state;
+  if (state === 'error') {
+    _syncMsg = msg || 'Sync failed';
+    if (!wasError) showToast('Sync error: ' + _syncMsg, 'error', 5000);
+  } else {
+    _syncMsg = '';
+  }
   updateSyncChip(count);
 }
 
@@ -1630,15 +1655,15 @@ function updateSyncChip(count) {
   if (!chip) return;
   const n = count !== undefined ? count : getOutbox().length;
   if (_syncState === 'syncing') {
-    chip.className = 'sync-chip syncing'; chip.textContent = '⟳ Syncing';
+    chip.className = 'sync-chip syncing'; chip.textContent = '⟳ Syncing'; chip.title = '';
   } else if (_syncState === 'offline') {
-    chip.className = 'sync-chip offline'; chip.textContent = '● Offline';
+    chip.className = 'sync-chip offline'; chip.textContent = '● Offline'; chip.title = 'No internet connection';
   } else if (_syncState === 'error') {
-    chip.className = 'sync-chip error'; chip.textContent = '✗ Error';
+    chip.className = 'sync-chip error'; chip.textContent = '✗ Sync error'; chip.title = _syncMsg;
   } else if (n > 0) {
-    chip.className = 'sync-chip queued'; chip.textContent = `↑ ${n} queued`;
+    chip.className = 'sync-chip queued'; chip.textContent = `↑ ${n} queued`; chip.title = 'Changes queued — tap to retry';
   } else {
-    chip.className = 'sync-chip idle'; chip.textContent = '✓ Synced';
+    chip.className = 'sync-chip idle'; chip.textContent = '✓ Synced'; chip.title = '';
   }
 }
 
@@ -1668,7 +1693,7 @@ function lockApp() { clearPasscode(); location.reload(); }
 
 function syncNow() {
   setSyncState('syncing');
-  flushOutbox().then(() => fetchFromSheet()).catch(() => { setSyncState('error'); });
+  flushOutbox().then(() => fetchFromSheet()).catch(err => { setSyncState('error', 0, err?.message || 'Unknown error'); });
 }
 
 function clearCacheData() {
