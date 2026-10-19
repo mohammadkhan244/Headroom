@@ -680,6 +680,17 @@ const CATS = [
 ];
 const CAT = Object.fromEntries(CATS.map(c => [c.name, c]));
 
+function getCats(e) {
+  if (Array.isArray(e.categories) && e.categories.length) return e.categories;
+  return [e.category || 'Other'];
+}
+function getCatMeta(name) { return CAT[name] || { icon:'💡', color:'#94a3b8' }; }
+
+function prepareForSync(e) {
+  const cats = getCats(e);
+  return { ...e, category: cats[0]||'Other', categories: cats.join('; ') };
+}
+
 // ── DATA ──────────────────────────────────────────────────────────
 function load() { try { return migrateData(JSON.parse(localStorage.getItem('mo_exp') || '[]')); } catch { return []; } }
 function save(d) { try { localStorage.setItem('mo_exp', JSON.stringify(d)); } catch {} }
@@ -1076,7 +1087,7 @@ function renderDash() {
 
   const ct = {};
   CATS.forEach(c => { ct[c.name]=0; });
-  exps.forEach(e => { ct[e.category] = (ct[e.category]||0) + e.amount; });
+  exps.forEach(e => { getCats(e).forEach(cn => { ct[cn] = (ct[cn]||0) + e.amount; }); });
   const active = CATS.filter(c=>ct[c.name]>0).sort((a,b)=>ct[b.name]-ct[a.name]);
 
   renderCatChart(active, ct);
@@ -1105,7 +1116,9 @@ function renderDash() {
 
 // ── TX ROW ────────────────────────────────────────────────────────
 function txHTML(e, del) {
-  const c = CAT[e.category] || CAT['Other'];
+  const cats = getCats(e);
+  const meta = getCatMeta(cats[0]);
+  const catLabel = cats.length === 1 ? cats[0] : cats.slice(0,2).join(', ') + (cats.length > 2 ? ` +${cats.length-2}` : '');
   const ds = new Date(e.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
   const _freq = e.freq || 'monthly';
   const freqBadge = _freq==='yearly'
@@ -1115,9 +1128,9 @@ function txHTML(e, del) {
     : `<span class="freq-badge monthly">📅 Monthly</span>`;
   return `<div class="tx-row" data-id="${e.id}" data-confirming="false">
     <div class="tx-inner">
-      <div class="tx-icon">${c.icon}</div>
+      <div class="tx-icon">${meta.icon}</div>
       <div class="tx-info">
-        <div class="tx-cat">${e.category}${freqBadge}</div>
+        <div class="tx-cat">${catLabel}${freqBadge}</div>
         <div class="tx-note">${e.note||'—'}</div>
       </div>
       <div class="tx-right">
@@ -1266,10 +1279,10 @@ function renderHist() {
   const q = document.getElementById('histSearch').value.toLowerCase().trim();
   let exps = load();
   if (m) exps = exps.filter(e=>e.date.startsWith(m));
-  if (c) exps = exps.filter(e=>e.category===c);
+  if (c) exps = exps.filter(e => getCats(e).includes(c));
   if (f) exps = exps.filter(e=>(e.freq||'monthly')===f);
   if (q) exps = exps.filter(e=>
-    e.category.toLowerCase().includes(q) ||
+    getCats(e).join(' ').toLowerCase().includes(q) ||
     (e.note||'').toLowerCase().includes(q) ||
     String(e.amount).includes(q)
   );
@@ -1550,10 +1563,11 @@ async function flushOutbox() {
   const done = [];
   for (const op of q) {
     try {
+      const toSend = op.op === 'upsert' ? { ...op, row: prepareForSync(op.row) } : op;
       const res = await fetch(getSyncUrl(), {
         method: 'POST',
         headers: { ...syncHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(op),
+        body: JSON.stringify(toSend),
         signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
       });
       if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
