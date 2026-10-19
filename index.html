@@ -269,9 +269,14 @@ body{
 .bs-backdrop.open{display:block;animation:fadeInBg .2s ease}
 .add-sheet{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;max-height:92dvh;overflow-y:auto;z-index:301;box-shadow:0 -8px 32px rgba(0,0,0,.2);-webkit-overflow-scrolling:touch;padding:0 16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
 .add-sheet.open{display:block;animation:slideUp .25s ease}
-@media(min-width:641px){
-  .add-sheet{left:50%;right:auto;width:480px;transform:translateX(-50%);border-radius:16px;bottom:24px;max-height:calc(100vh - 48px)}
-  .add-sheet.open{transform:translateX(-50%)}
+@media(min-width:768px){
+  .add-sheet{left:50%;right:auto;width:520px;bottom:auto;top:50%;
+             transform:translate(-50%,calc(-50% + 100vh));
+             border-radius:16px;max-height:92dvh;
+             display:block;opacity:0;pointer-events:none;
+             transition:transform .3s ease,opacity .25s ease;
+             animation:none!important}
+  .add-sheet.open{transform:translate(-50%,-50%);opacity:1;pointer-events:auto}
 }
 .bs-handle{width:44px;height:5px;background:var(--border);border-radius:3px;margin:12px auto 14px;flex-shrink:0}
 .bs-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
@@ -404,68 +409,13 @@ body{
     </div>
   </section>
 
-  <!-- ADD (desktop / batch) -->
+  <!-- ADD (redirect to bottom sheet) -->
   <section class="tab-pane" id="tab-add">
-    <div class="form-card" style="max-width:620px">
-      <div class="form-title">Add Expense</div>
-      <div class="mode-toggle">
-        <button class="mode-btn active" id="modeSingle" onclick="setMode('single')">Single</button>
-        <button class="mode-btn" id="modeBatch" onclick="setMode('batch')">Batch (multiple)</button>
-      </div>
-      <!-- SINGLE MODE -->
-      <div id="singleForm">
-        <div class="form-group">
-          <label class="form-label">Date</label>
-          <input type="date" class="form-input" id="expDate">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Category</label>
-          <div class="cat-grid" id="catGrid"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Amount</label>
-          <div class="amt-wrap">
-            <span class="amt-prefix">$</span>
-            <input type="number" inputmode="decimal" class="form-input amt-input" id="expAmt" placeholder="0.00" step="0.01" min="0">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Note (optional)</label>
-          <input type="text" class="form-input" id="expNote" placeholder="e.g. Whole Foods, Substack annual...">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Frequency</label>
-          <select class="form-input" id="expFreq">
-            <option value="monthly">📅 Monthly (recurring)</option>
-            <option value="yearly">📆 Yearly (annual)</option>
-            <option value="one-time">🔹 One-time / Variable</option>
-          </select>
-        </div>
-        <button class="submit-btn" onclick="addExpense()">+ Add Expense</button>
-        <div class="form-err" id="formErr"></div>
-        <div class="form-ok" id="formOk">✅ Expense added!</div>
-      </div>
-      <!-- BATCH MODE -->
-      <div id="batchForm" hidden>
-        <p style="font-size:12px;color:var(--fg2);margin-bottom:12px">Enter multiple expenses at once — one row per expense. Hit <strong>Save All</strong> when done.</p>
-        <div class="batch-wrap">
-          <table class="batch-table">
-            <thead><tr>
-              <th style="width:110px">Date</th>
-              <th style="width:140px">Category</th>
-              <th style="width:90px">Amount</th>
-              <th>Note</th>
-              <th style="width:120px">Frequency</th>
-              <th style="width:30px"></th>
-            </tr></thead>
-            <tbody id="batchRows"></tbody>
-          </table>
-        </div>
-        <button class="add-row-btn" onclick="addBatchRow()">+ Add Row</button>
-        <button class="submit-btn" style="margin-top:14px" onclick="saveBatch()">Save All</button>
-        <div class="form-err" id="batchErr"></div>
-        <div class="form-ok" id="batchOk"></div>
-      </div>
+    <div class="form-card" style="text-align:center;padding:40px 24px">
+      <div style="font-size:36px;margin-bottom:12px">➕</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px">Add an entry</div>
+      <div style="font-size:13px;color:var(--fg2);margin-bottom:20px">Tap the button below or use the ➕ in the bottom nav</div>
+      <button class="submit-btn" style="max-width:200px;margin:0 auto" onclick="openAddSheet()">Open Add Sheet</button>
     </div>
   </section>
 
@@ -599,6 +549,11 @@ body{
     <span class="bs-title" id="sheetTitle">Add Expense</span>
     <button class="bs-close" onclick="closeSheet()" aria-label="Close">✕</button>
   </div>
+  <!-- Type toggle -->
+  <div class="mode-toggle" id="sheetTypeTgl" style="margin-bottom:12px">
+    <button class="mode-btn active" id="typeExpBtn" onclick="setSheetType('expense')">💸 Expense</button>
+    <button class="mode-btn" id="typeSavBtn" onclick="setSheetType('saved')">💰 Save</button>
+  </div>
   <!-- Amount -->
   <div class="sheet-amt-wrap">
     <span class="sheet-amt-pfx">$</span>
@@ -607,6 +562,17 @@ body{
   <!-- Category -->
   <div class="form-label" style="margin-bottom:8px">Category</div>
   <div class="sheet-cat-grid" id="sheetCatGrid"></div>
+  <!-- Reimbursable row (Business expenses only) -->
+  <div id="reimbRow" hidden style="background:var(--accent-bg,rgba(224,140,20,.08));border:1px solid rgba(224,140,20,.3);border-radius:8px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span class="form-label" style="margin-bottom:0;font-size:12px">Reimbursable?</span>
+      <button class="sec-btn" id="reimbToggle" style="padding:5px 12px;font-size:12px" onclick="toggleReimb()">No</button>
+    </div>
+    <div id="reimbStatusRow" hidden style="display:flex;gap:6px">
+      <button class="sec-btn active" id="reimbPendBtn" style="flex:1;padding:7px" onclick="setReimbStatus('pending')">⏳ Pending</button>
+      <button class="sec-btn" id="reimbPaidBtn" style="flex:1;padding:7px" onclick="setReimbStatus('paid')">✅ Paid</button>
+    </div>
+  </div>
   <!-- Note + Date row -->
   <div class="sheet-row">
     <input type="text" inputmode="text" class="form-input" id="sheetNote" placeholder="Note / merchant…" autocomplete="off" style="flex:1;min-height:44px">
@@ -680,6 +646,12 @@ const CATS = [
 ];
 const CAT = Object.fromEntries(CATS.map(c => [c.name, c]));
 
+const SAVED_CATS = [
+  { name:'Roth IRA',  icon:'📊', color:'#22c55e' },
+  { name:'Investing', icon:'📈', color:'#3b82f6' },
+  { name:'Other',     icon:'💰', color:'#94a3b8' },
+];
+
 function getCats(e) {
   if (Array.isArray(e.categories) && e.categories.length) return e.categories;
   return [e.category || 'Other'];
@@ -709,6 +681,10 @@ let selMonth = curMonth();
 let selCat   = '';
 let chartCat = null, chartTrend = null;
 let sheetSelCat = '', sheetMode = 'add', sheetEditId = null;
+let sheetType         = 'expense';
+let sheetSelCats      = [];
+let sheetReimbursable = false;
+let sheetReimbStatus  = 'pending';
 
 function curMonth() {
   const d = new Date();
@@ -865,22 +841,82 @@ function orderedCats() {
 }
 
 // ── BOTTOM SHEET ──────────────────────────────────────────────────
+function setSheetType(type) {
+  sheetType = type;
+  sheetSelCats = [];
+  document.getElementById('typeExpBtn').classList.toggle('active', type === 'expense');
+  document.getElementById('typeSavBtn').classList.toggle('active', type === 'saved');
+  document.getElementById('sheetTitle').textContent = type === 'saved' ? 'Add Savings' : (sheetMode === 'edit' ? 'Edit Expense' : 'Add Expense');
+  document.getElementById('sheetSaveBtn').textContent = sheetMode === 'edit' ? 'Save Changes' : (type === 'saved' ? 'Add Savings' : 'Add Expense');
+  buildSheetCatGrid();
+  updateReimbRow();
+}
+
+function buildSheetCatGrid() {
+  const cats = sheetType === 'saved' ? SAVED_CATS : orderedCats();
+  document.getElementById('sheetCatGrid').innerHTML = cats.map(c =>
+    `<button class="sheet-cat-btn${sheetSelCats.includes(c.name) ? ' sel' : ''}" data-cat="${c.name}" onclick="pickSheetCat('${c.name}')">
+      <span class="sci">${c.icon}</span>${c.name.split(' ')[0]}
+    </button>`
+  ).join('');
+}
+
+function pickSheetCat(name) {
+  if (sheetSelCats.includes(name)) {
+    sheetSelCats = sheetSelCats.filter(c => c !== name);
+  } else {
+    sheetSelCats = [...sheetSelCats, name];
+  }
+  document.querySelectorAll('#sheetCatGrid .sheet-cat-btn').forEach(b =>
+    b.classList.toggle('sel', sheetSelCats.includes(b.dataset.cat))
+  );
+  document.getElementById('sheetCatGrid').classList.remove('err');
+  updateReimbRow();
+}
+
+function updateReimbRow() {
+  const show = sheetType === 'expense' && sheetSelCats.includes('Business');
+  document.getElementById('reimbRow').hidden = !show;
+  if (!show) { sheetReimbursable = false; sheetReimbStatus = 'pending'; }
+  document.getElementById('reimbToggle').textContent = sheetReimbursable ? 'Yes' : 'No';
+  document.getElementById('reimbStatusRow').hidden = !sheetReimbursable;
+  document.getElementById('reimbPendBtn').classList.toggle('active', sheetReimbStatus === 'pending');
+  document.getElementById('reimbPaidBtn').classList.toggle('active', sheetReimbStatus === 'paid');
+}
+
+function toggleReimb() {
+  sheetReimbursable = !sheetReimbursable;
+  updateReimbRow();
+}
+
+function setReimbStatus(s) {
+  sheetReimbStatus = s;
+  document.getElementById('reimbPendBtn').classList.toggle('active', s === 'pending');
+  document.getElementById('reimbPaidBtn').classList.toggle('active', s === 'paid');
+}
+
 function openAddSheet(editExp = null) {
-  sheetMode = editExp ? 'edit' : 'add';
+  sheetMode   = editExp ? 'edit' : 'add';
   sheetEditId = editExp ? editExp.id : null;
-  sheetSelCat = editExp ? editExp.category : '';
+  sheetType   = editExp ? (editExp.type || 'expense') : 'expense';
+  sheetSelCats      = editExp ? getCats(editExp) : [];
+  sheetReimbursable = editExp ? (editExp.reimbursable || false) : false;
+  sheetReimbStatus  = editExp ? (editExp.reimb_status || 'pending') : 'pending';
 
   document.getElementById('sheetAmt').value  = editExp ? editExp.amount : '';
   document.getElementById('sheetNote').value = editExp ? (editExp.note || '') : '';
   document.getElementById('sheetDate').value = editExp ? editExp.date : todayStr();
   document.getElementById('sheetFreq').value = editExp ? (editExp.freq || 'monthly') : 'monthly';
-  document.getElementById('sheetTitle').textContent  = editExp ? 'Edit Expense' : 'Add Expense';
-  document.getElementById('sheetSaveBtn').textContent = editExp ? 'Save Changes' : 'Add Expense';
+  document.getElementById('sheetTitle').textContent   = sheetMode === 'edit' ? (sheetType==='saved'?'Edit Savings':'Edit Expense') : (sheetType==='saved'?'Add Savings':'Add Expense');
+  document.getElementById('sheetSaveBtn').textContent  = sheetMode === 'edit' ? 'Save Changes' : (sheetType==='saved'?'Add Savings':'Add Expense');
   document.getElementById('sheetAddAnotherBtn').hidden = !!editExp;
   document.getElementById('sheetAmt').classList.remove('err');
   document.getElementById('sheetCatGrid').classList.remove('err');
+  document.getElementById('typeExpBtn').classList.toggle('active', sheetType === 'expense');
+  document.getElementById('typeSavBtn').classList.toggle('active', sheetType === 'saved');
 
-  buildSheetCatGrid(sheetSelCat);
+  buildSheetCatGrid();
+  updateReimbRow();
 
   document.getElementById('bsBackdrop').classList.add('open');
   document.getElementById('addSheet').classList.add('open');
@@ -890,22 +926,8 @@ function openAddSheet(editExp = null) {
 function closeSheet() {
   document.getElementById('bsBackdrop').classList.remove('open');
   document.getElementById('addSheet').classList.remove('open');
-  sheetSelCat = ''; sheetMode = 'add'; sheetEditId = null;
-}
-
-function buildSheetCatGrid(activeCat) {
-  const cats = orderedCats();
-  document.getElementById('sheetCatGrid').innerHTML = cats.map(c =>
-    `<button class="sheet-cat-btn${c.name === activeCat ? ' sel' : ''}" data-cat="${c.name}" onclick="pickSheetCat('${c.name}')">
-      <span class="sci">${c.icon}</span>${c.name.split(' ')[0]}
-    </button>`
-  ).join('');
-}
-
-function pickSheetCat(name) {
-  sheetSelCat = name;
-  document.querySelectorAll('#sheetCatGrid .sheet-cat-btn').forEach(b => b.classList.toggle('sel', b.dataset.cat === name));
-  document.getElementById('sheetCatGrid').classList.remove('err');
+  sheetSelCat = ''; sheetSelCats = []; sheetMode = 'add'; sheetEditId = null;
+  sheetType = 'expense'; sheetReimbursable = false; sheetReimbStatus = 'pending';
 }
 
 function saveSheetExpense() {
@@ -917,25 +939,33 @@ function saveSheetExpense() {
   let valid = true;
   document.getElementById('sheetAmt').classList.remove('err');
   document.getElementById('sheetCatGrid').classList.remove('err');
-  if (!amt || amt <= 0) { document.getElementById('sheetAmt').classList.add('err'); valid = false; }
-  if (!sheetSelCat)     { document.getElementById('sheetCatGrid').classList.add('err'); valid = false; }
+  if (!amt || amt <= 0)       { document.getElementById('sheetAmt').classList.add('err'); valid = false; }
+  if (!sheetSelCats.length)   { document.getElementById('sheetCatGrid').classList.add('err'); valid = false; }
   if (!valid) return;
+
+  const cats = sheetSelCats;
+  const isBizReimb = sheetType === 'expense' && cats.includes('Business') && sheetReimbursable;
 
   if (sheetMode === 'edit' && sheetEditId) {
     const data = load();
     const idx  = data.findIndex(e => e.id === sheetEditId);
     if (idx !== -1) {
-      data[idx] = { ...data[idx], date, category: sheetSelCat, amount: Math.round(amt*100)/100, note, freq };
+      data[idx] = { ...data[idx], date, categories: cats, category: cats[0]||'Other', amount: Math.round(amt*100)/100, note, freq,
+                    type: sheetType, reimbursable: isBizReimb, reimb_status: isBizReimb ? sheetReimbStatus : 'pending' };
       save(data);
       queueOp({ op: 'upsert', row: data[idx] });
     }
     closeSheet();
     buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
-    showToast('Expense updated', 'success');
+    showToast('Updated ✓', 'success');
   } else {
-    const newExp = { id: uid(), date, category: sheetSelCat, amount: Math.round(amt*100)/100, note, freq, createdAt: Date.now() };
+    const newExp = { id: uid(), date, categories: cats, category: cats[0]||'Other',
+                     amount: Math.round(amt*100)/100, note, freq,
+                     type: sheetType, reimbursable: isBizReimb,
+                     reimb_status: isBizReimb ? sheetReimbStatus : 'pending',
+                     createdAt: Date.now() };
     addRec(newExp);
-    trackRecentCat(sheetSelCat);
+    trackRecentCat(cats[0] || 'Other');
     queueOp({ op: 'upsert', row: newExp });
     selMonth = date.slice(0,7);
     buildMonthSels(); document.getElementById('monthSel').value = selMonth;
