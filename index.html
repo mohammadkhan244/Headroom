@@ -697,7 +697,6 @@ function todayStr() { return new Date().toISOString().split('T')[0]; }
 
 // ── STATE ─────────────────────────────────────────────────────────
 let selMonth = curMonth();
-let selCat   = '';
 let chartCat = null, chartTrend = null;
 let sheetSelCat = '', sheetMode = 'add', sheetEditId = null;
 let sheetType         = 'expense';
@@ -758,8 +757,6 @@ function finishInit() {
   runMigrations();
   buildMonthSels();
   document.getElementById('monthSel').value = selMonth;
-  buildCatGrid();
-  document.getElementById('expDate').value = todayStr();
   buildHistFilters();
 
   renderDash();
@@ -830,19 +827,6 @@ function buildExpSels() {
   document.getElementById('expEnd').innerHTML   = ms.map(m=>`<option value="${m}">${monthLabel(m)}</option>`).join('');
 }
 
-// ── CAT GRID (desktop add form) ───────────────────────────────────
-function buildCatGrid() {
-  document.getElementById('catGrid').innerHTML = CATS.map(c=>
-    `<button class="cat-btn" data-cat="${c.name}" onclick="pickCat('${c.name}')">
-      <span class="ci">${c.icon}</span>${c.name.split(' ')[0]}
-    </button>`
-  ).join('');
-}
-function pickCat(name) {
-  selCat = name;
-  document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('sel', b.dataset.cat===name));
-  document.getElementById('catGrid').classList.remove('err');
-}
 
 // ── RECENT CATS (for bottom sheet ordering) ───────────────────────
 function getRecentCats() {
@@ -1029,48 +1013,6 @@ function editExpense(id) {
   if (exp) openAddSheet(exp);
 }
 
-// ── ADD (desktop form) ────────────────────────────────────────────
-function showErr(msg) {
-  const el = document.getElementById('formErr');
-  el.textContent = msg; el.style.display = 'block';
-  setTimeout(()=>{ el.style.display='none'; }, 3000);
-}
-function addExpense() {
-  const date = document.getElementById('expDate').value;
-  const amt  = parseFloat(document.getElementById('expAmt').value);
-  const note = document.getElementById('expNote').value.trim();
-
-  document.getElementById('expDate').classList.remove('err');
-  document.getElementById('expAmt').classList.remove('err');
-  document.getElementById('catGrid').classList.remove('err');
-
-  let ok = true;
-  if (!date) { document.getElementById('expDate').classList.add('err'); ok=false; }
-  if (!selCat) { document.getElementById('catGrid').classList.add('err'); ok=false; }
-  if (!amt || amt<=0) { document.getElementById('expAmt').classList.add('err'); ok=false; }
-  if (!ok) { showErr('Please fill in date, category, and amount.'); return; }
-
-  const freq = document.getElementById('expFreq').value || 'monthly';
-  const newExp = { id: uid(), date, category: selCat, amount: Math.round(amt*100)/100, note, freq, createdAt: Date.now() };
-  addRec(newExp);
-  trackRecentCat(selCat);
-  queueOp({ op: 'upsert', row: newExp });
-
-  document.getElementById('expAmt').value = '';
-  document.getElementById('expNote').value = '';
-  document.getElementById('expFreq').value = 'monthly';
-  selCat = '';
-  document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('sel'));
-
-  selMonth = date.slice(0,7);
-  buildMonthSels(); document.getElementById('monthSel').value = selMonth;
-  buildHistFilters();
-
-  const okEl = document.getElementById('formOk');
-  okEl.style.display='block';
-  setTimeout(()=>{ okEl.style.display='none'; }, 2000);
-  renderDash();
-}
 
 // ── DASHBOARD ─────────────────────────────────────────────────────
 function monthExp(m) { return load().filter(e=>e.date.startsWith(m)); }
@@ -1471,86 +1413,6 @@ function copyCSV() {
   }).catch(()=>{ area.select(); try{document.execCommand('copy');}catch{} });
 }
 
-// ── BATCH MODE ────────────────────────────────────────────────────
-let batchMode = 'single';
-
-function setMode(m) {
-  batchMode = m;
-  document.getElementById('modeSingle').classList.toggle('active', m==='single');
-  document.getElementById('modeBatch').classList.toggle('active', m==='batch');
-  document.getElementById('singleForm').hidden = m!=='single';
-  document.getElementById('batchForm').hidden = m!=='batch';
-  if (m==='batch' && document.getElementById('batchRows').children.length===0) {
-    addBatchRow(); addBatchRow(); addBatchRow();
-  }
-}
-
-function batchCatOptions() {
-  return CATS.map(c=>`<option value="${c.name}">${c.icon} ${c.name}</option>`).join('');
-}
-
-function addBatchRow(defaults={}) {
-  const tbody = document.getElementById('batchRows');
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td><input type="date" class="batch-inp" value="${defaults.date||todayStr()}"></td>
-    <td><select class="batch-sel">${batchCatOptions()}</select></td>
-    <td><input type="number" class="batch-inp" placeholder="0.00" step="0.01" min="0" value="${defaults.amount||''}"></td>
-    <td><input type="text" class="batch-inp" placeholder="note..." value="${defaults.note||''}"></td>
-    <td><select class="batch-sel"><option value="monthly">📅 Monthly</option><option value="yearly">📆 Yearly</option><option value="one-time">🔹 One-time</option></select></td>
-    <td><button class="batch-del" onclick="this.closest('tr').remove()">✕</button></td>
-  `;
-  const sels = tr.querySelectorAll('select');
-  if (defaults.category) sels[0].value = defaults.category;
-  if (defaults.freq) sels[1].value = defaults.freq;
-  tbody.appendChild(tr);
-}
-
-function saveBatch() {
-  const rows = [...document.getElementById('batchRows').children];
-  const records = [];
-  let anyErr = false;
-
-  rows.forEach((tr,i) => {
-    const inputs = tr.querySelectorAll('input');
-    const dateEl = inputs[0], amtEl = inputs[1], noteEl = inputs[2];
-    const selEls = tr.querySelectorAll('select');
-    const catSel = selEls[0], freqSel = selEls[1];
-    const date = dateEl.value, cat = catSel.value, freq = freqSel ? freqSel.value : 'monthly';
-    const amt = parseFloat(amtEl.value), note = noteEl ? noteEl.value.trim() : '';
-
-    dateEl.style.borderColor = ''; amtEl.style.borderColor = '';
-    if (!date||!amt||amt<=0) {
-      if (!date) dateEl.style.borderColor='var(--red)';
-      if (!amt||amt<=0) amtEl.style.borderColor='var(--red)';
-      anyErr = true; return;
-    }
-    records.push({ id:uid(), date, category:cat, amount:Math.round(amt*100)/100, note, freq, createdAt:Date.now()+i });
-  });
-
-  if (anyErr) {
-    const el=document.getElementById('batchErr');
-    el.textContent='Fix highlighted rows.'; el.style.display='block';
-    setTimeout(()=>{ el.style.display='none'; },3000); return;
-  }
-  if (!records.length) return;
-
-  const d = load(); records.forEach(r=>d.push(r)); save(d);
-  records.forEach(r => queueOp({ op: 'upsert', row: r }));
-
-  const months = [...new Set(records.map(r=>r.date.slice(0,7)))];
-  selMonth = months.sort().pop();
-  buildMonthSels(); document.getElementById('monthSel').value=selMonth;
-  buildHistFilters();
-
-  const ok=document.getElementById('batchOk');
-  ok.textContent=`✅ ${records.length} expense${records.length>1?'s':''} saved!`; ok.style.display='block';
-  setTimeout(()=>{ ok.style.display='none'; },2500);
-
-  document.getElementById('batchRows').innerHTML='';
-  addBatchRow(); addBatchRow(); addBatchRow();
-  renderDash();
-}
 
 // ── INSIGHTS ─────────────────────────────────────────────────────
 function renderInsights(exps, total, ct) {
