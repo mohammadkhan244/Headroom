@@ -197,6 +197,10 @@ body{
 
 /* Settings */
 .sett-sep{font-size:10px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin:22px 0 14px;padding-bottom:7px;border-bottom:1px solid var(--border)}
+.sett-info-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px}
+.sett-info-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
+.sett-info-row span:first-child{color:var(--fg2)}
+.sett-info-row span:last-child{font-weight:600;font-family:'JetBrains Mono',monospace;font-size:11px}
 
 /* Insights */
 .insights-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:20px}
@@ -523,6 +527,12 @@ body{
       </div>
 
       <div class="sett-sep">Sync</div>
+      <div class="sett-info-box">
+        <div class="sett-info-row"><span>App version</span><span id="settVer">—</span></div>
+        <div class="sett-info-row"><span>Last sync</span><span id="settSync">—</span></div>
+        <div class="sett-info-row"><span>Rows</span><span id="settRows">—</span></div>
+      </div>
+      <button class="sec-btn" style="width:100%;margin-bottom:8px" onclick="forceRefresh()">🔄 Force Refresh</button>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <button class="sec-btn" onclick="syncNow()" style="flex:1">☁ Sync now</button>
         <button class="sec-btn" onclick="clearCacheData()" style="flex:1">🗑 Clear local data</button>
@@ -618,6 +628,24 @@ body{
 
 <script>
 // ── CONSTANTS / SETTINGS ─────────────────────────────────────────
+const APP_VERSION    = '2026-10-18';
+const SCHEMA_VERSION = 2;
+
+function migrateData(data) {
+  return data.map(e => ({
+    ...e,
+    categories:   Array.isArray(e.categories) && e.categories.length ? e.categories : [e.category||'Other'],
+    type:         e.type || 'expense',
+    reimbursable: e.reimbursable === true || e.reimbursable === 'TRUE',
+    reimb_status: e.reimb_status || 'pending',
+    recurring_id: e.recurring_id || null,
+  }));
+}
+function runMigrations() {
+  const v = +(localStorage.getItem('mo_schema_version')||0);
+  if (v < SCHEMA_VERSION) { save(load()); try{localStorage.setItem('mo_schema_version',SCHEMA_VERSION);}catch{} }
+}
+
 const DEFAULTS = { grossAnnual:107800.16, netAnnual:64394.88, netMonthly:5366, fiTarget:3000, fiCity:'Columbus, OH' };
 let NET_MONTHLY, FI_TARGET, ANNUAL_GROSS, ANNUAL_NET, FI_CITY;
 function loadSettings() {
@@ -653,7 +681,7 @@ const CATS = [
 const CAT = Object.fromEntries(CATS.map(c => [c.name, c]));
 
 // ── DATA ──────────────────────────────────────────────────────────
-function load() { try { return JSON.parse(localStorage.getItem('mo_exp') || '[]'); } catch { return []; } }
+function load() { try { return migrateData(JSON.parse(localStorage.getItem('mo_exp') || '[]')); } catch { return []; } }
 function save(d) { try { localStorage.setItem('mo_exp', JSON.stringify(d)); } catch {} }
 function addRec(r) { const d = load(); d.push(r); save(d); }
 function delRec(id) { save(load().filter(e => e.id !== id)); }
@@ -721,6 +749,7 @@ function init() {
 }
 
 function finishInit() {
+  runMigrations();
   buildMonthSels();
   document.getElementById('monthSel').value = selMonth;
   buildCatGrid();
@@ -1467,6 +1496,10 @@ function renderSettings() {
     const v = parseFloat(this.value);
     if (v > 0) document.getElementById('sMonthlyNet').value = Math.round(v/12);
   };
+  document.getElementById('settVer').textContent  = APP_VERSION + ' · schema v' + SCHEMA_VERSION;
+  const ls = (() => { try { return localStorage.getItem('mo_last_sync')||''; } catch { return ''; } })();
+  document.getElementById('settSync').textContent = ls ? new Date(ls).toLocaleString() : 'Never';
+  document.getElementById('settRows').textContent = load().length + ' rows';
 }
 
 function saveSettingsForm() {
@@ -1638,6 +1671,16 @@ function schedulePeriodicSync() {
   }, 60000);
 }
 
+async function forceRefresh() {
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) await r.unregister();
+  }
+  if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
+  location.reload(true);
+}
+function lockApp() { clearPasscode(); location.reload(); }
+
 function syncNow() {
   setSyncState('syncing');
   flushOutbox().then(() => fetchFromSheet()).catch(() => { setSyncState('error'); });
@@ -1711,11 +1754,8 @@ if ('serviceWorker' in navigator) {
         const nw = reg.installing;
         nw.addEventListener('statechange', () => {
           if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-            const banner = document.createElement('div');
-            banner.style.cssText = 'position:fixed;bottom:calc(76px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--accent);color:#000;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);white-space:nowrap';
-            banner.textContent = '🔄 App updated — tap to reload';
-            banner.onclick = () => { nw.postMessage({ type: 'SKIP_WAITING' }); location.reload(); };
-            document.body.appendChild(banner);
+            showToast('🔄 Updating…');
+            setTimeout(() => { nw.postMessage({ type: 'SKIP_WAITING' }); setTimeout(() => location.reload(), 400); }, 1200);
           }
         });
       });
