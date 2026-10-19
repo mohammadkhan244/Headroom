@@ -433,6 +433,14 @@ body{
         <option value="yearly">📆 Yearly</option>
         <option value="one-time">🔹 One-time</option>
       </select>
+      <select class="filter-sel" id="histType">
+        <option value="">All Types</option>
+        <option value="expense">💸 Expense</option>
+        <option value="saved">💰 Saved</option>
+        <option value="business">💼 Business</option>
+        <option value="pending">⏳ Pending</option>
+        <option value="paid">✅ Paid</option>
+      </select>
     </div>
     <div class="sec-card"><div id="histList"></div></div>
   </section>
@@ -474,6 +482,13 @@ body{
       <div class="form-group">
         <label class="form-label">FI City / Label</label>
         <input type="text" class="form-input" id="sFiCity" placeholder="Columbus, OH">
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+        <input type="checkbox" id="sCountBiz" style="width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;margin-top:1px">
+        <div>
+          <div style="font-size:13px;font-weight:600">Count Business toward FI target</div>
+          <div style="font-size:11px;color:var(--fg2)">Off = Business-tagged expenses excluded from Spent and savings rate</div>
+        </div>
       </div>
 
       <div class="sett-sep">Sync</div>
@@ -614,22 +629,26 @@ function runMigrations() {
 
 const DEFAULTS = { grossAnnual:107800.16, netAnnual:64394.88, netMonthly:5366, fiTarget:3000, fiCity:'Columbus, OH' };
 let NET_MONTHLY, FI_TARGET, ANNUAL_GROSS, ANNUAL_NET, FI_CITY;
+let COUNT_BUSINESS_IN_FI = true;
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem('mo_settings')||'{}');
-    ANNUAL_GROSS = +s.grossAnnual || DEFAULTS.grossAnnual;
-    ANNUAL_NET   = +s.netAnnual   || DEFAULTS.netAnnual;
-    NET_MONTHLY  = +s.netMonthly  || DEFAULTS.netMonthly;
-    FI_TARGET    = +s.fiTarget    || DEFAULTS.fiTarget;
-    FI_CITY      = s.fiCity       || DEFAULTS.fiCity;
+    ANNUAL_GROSS           = +s.grossAnnual || DEFAULTS.grossAnnual;
+    ANNUAL_NET             = +s.netAnnual   || DEFAULTS.netAnnual;
+    NET_MONTHLY            = +s.netMonthly  || DEFAULTS.netMonthly;
+    FI_TARGET              = +s.fiTarget    || DEFAULTS.fiTarget;
+    FI_CITY                = s.fiCity       || DEFAULTS.fiCity;
+    COUNT_BUSINESS_IN_FI   = s.countBusinessInFI !== false;
   } catch {
     ANNUAL_GROSS=DEFAULTS.grossAnnual; ANNUAL_NET=DEFAULTS.netAnnual;
     NET_MONTHLY=DEFAULTS.netMonthly; FI_TARGET=DEFAULTS.fiTarget; FI_CITY=DEFAULTS.fiCity;
+    COUNT_BUSINESS_IN_FI=true;
   }
 }
 function applySettings(s) {
   ANNUAL_GROSS=+s.grossAnnual; ANNUAL_NET=+s.netAnnual;
   NET_MONTHLY=+s.netMonthly; FI_TARGET=+s.fiTarget; FI_CITY=s.fiCity||DEFAULTS.fiCity;
+  if (s.countBusinessInFI !== undefined) COUNT_BUSINESS_IN_FI = s.countBusinessInFI !== false;
   try { localStorage.setItem('mo_settings', JSON.stringify(s)); } catch {}
 }
 
@@ -751,6 +770,7 @@ function finishInit() {
   document.getElementById('histMonth').addEventListener('change', renderHist);
   document.getElementById('histCat').addEventListener('change', renderHist);
   document.getElementById('histFreq').addEventListener('change', renderHist);
+  document.getElementById('histType').addEventListener('change', renderHist);
   document.getElementById('histSearch').addEventListener('input', renderHist);
   document.getElementById('themeBtn').addEventListener('click', toggleTheme);
 
@@ -1055,19 +1075,21 @@ function addExpense() {
 function monthExp(m) { return load().filter(e=>e.date.startsWith(m)); }
 
 function renderDash() {
-  const exps  = monthExp(selMonth);
-  const total = exps.reduce((s,e)=>s+e.amount, 0);
+  const exps      = monthExp(selMonth);
+  const expItems  = exps.filter(e => (e.type||'expense') === 'expense');
+  const savedItems= exps.filter(e => e.type === 'saved');
+  const spentAll  = expItems.reduce((s,e)=>s+e.amount, 0);
+  const spent     = COUNT_BUSINESS_IN_FI
+    ? spentAll
+    : expItems.filter(e => !getCats(e).includes('Business')).reduce((s,e)=>s+e.amount, 0);
+  const savedAmt  = savedItems.reduce((s,e)=>s+e.amount, 0);
+  const leftInCash= NET_MONTHLY - spentAll - savedAmt;
+  const rate      = Math.round(((NET_MONTHLY - spent) / NET_MONTHLY) * 100);
 
   const el_t1=document.getElementById('fiTickFI'),el_t2=document.getElementById('fiTickNet'),el_leg=document.getElementById('fiLegLabel');
   if(el_t1) el_t1.textContent=`FI: $${FI_TARGET.toLocaleString()}`;
   if(el_t2) el_t2.textContent=`Net: $${NET_MONTHLY.toLocaleString()}`;
   if(el_leg) { const _k=FI_TARGET>=1000?`$${(FI_TARGET/1000).toFixed(FI_TARGET%1000===0?0:1)}K`:`$${FI_TARGET}`; el_leg.textContent=`FI target (${_k}/mo ${FI_CITY})`; }
-  const saved = NET_MONTHLY - total;
-  const rate  = Math.round((saved/NET_MONTHLY)*100);
-
-  const fixedMonthly   = exps.filter(e=>(e.freq||'monthly')==='monthly').reduce((s,e)=>s+e.amount,0);
-  const yearlyTotal    = exps.filter(e=>(e.freq||'monthly')==='yearly').reduce((s,e)=>s+e.amount,0);
-  const yearlyProrated = yearlyTotal / 12;
 
   const rateColor = rate>=50?'c-green':rate>=10?'c-amber':'c-red';
   document.getElementById('statsGrid').innerHTML = `
@@ -1078,52 +1100,52 @@ function renderDash() {
     </div>
     <div class="stat-card">
       <div class="stat-label">Spent ${monthLabel(selMonth)}</div>
-      <div class="stat-value ${total>FI_TARGET?'c-amber':'c-green'}">$${total.toFixed(0)}</div>
-      <div class="stat-sub">${total<=FI_TARGET?'Under FI target ✓':`$${(total-FI_TARGET).toFixed(0)} over target`}</div>
+      <div class="stat-value ${spent>FI_TARGET?'c-amber':'c-green'}">$${spent.toFixed(0)}</div>
+      <div class="stat-sub">${spent<=FI_TARGET?'Under FI target ✓':`$${(spent-FI_TARGET).toFixed(0)} over target`}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Saved</div>
+      <div class="stat-value c-green">$${savedAmt.toFixed(0)}</div>
+      <div class="stat-sub">${savedItems.length} savings entr${savedItems.length===1?'y':'ies'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Left in Cash</div>
+      <div class="stat-value ${leftInCash>=0?'c-green':'c-red'}">$${Math.abs(leftInCash).toFixed(0)}${leftInCash<0?' over':''}</div>
+      <div class="stat-sub">After expenses + savings</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">Savings Rate</div>
       <div class="stat-value ${rateColor}">${rate}%</div>
-      <div class="stat-sub">$${Math.abs(saved).toFixed(0)} ${saved>=0?'kept':'over income'}</div>
+      <div class="stat-sub">$${savedAmt.toFixed(0)} saved · $${spent.toFixed(0)} spent</div>
     </div>
     <div class="stat-card">
       <div class="stat-label">FI Buffer</div>
       <div class="stat-value c-green">+$${(NET_MONTHLY-FI_TARGET).toLocaleString()}</div>
       <div class="stat-sub">Earn ${Math.round(NET_MONTHLY/FI_TARGET*100)}% of FI target</div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Fixed Monthly</div>
-      <div class="stat-value c-amber">$${fixedMonthly.toFixed(0)}</div>
-      <div class="stat-sub">Recurring monthly expenses</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Yearly (prorated)</div>
-      <div class="stat-value c-green">$${yearlyProrated.toFixed(0)}<span style="font-size:13px;font-weight:500">/mo</span></div>
-      <div class="stat-sub">${yearlyTotal>0?`$${yearlyTotal.toFixed(0)} annual ÷ 12`:'No annual expenses'}</div>
-    </div>
   `;
 
-  const pct = Math.min(total/NET_MONTHLY*100, 100);
+  const pct = Math.min(spent/NET_MONTHLY*100, 100);
   const bar = document.getElementById('fiBar');
   const badge = document.getElementById('fiBadge');
   bar.style.width = `${pct}%`;
-  if (total<=FI_TARGET) {
+  if (spent<=FI_TARGET) {
     bar.style.background='var(--green)'; badge.className='fi-badge good'; badge.textContent='✓ Under FI Target';
-  } else if (total<=NET_MONTHLY) {
-    bar.style.background='var(--accent)'; badge.className='fi-badge warn'; badge.textContent=`⚠ $${(total-FI_TARGET).toFixed(0)} over target`;
+  } else if (spent<=NET_MONTHLY) {
+    bar.style.background='var(--accent)'; badge.className='fi-badge warn'; badge.textContent=`⚠ $${(spent-FI_TARGET).toFixed(0)} over target`;
   } else {
     bar.style.background='var(--red)'; badge.className='fi-badge bad'; badge.textContent='✗ Over Income';
   }
 
   const ct = {};
   CATS.forEach(c => { ct[c.name]=0; });
-  exps.forEach(e => { getCats(e).forEach(cn => { ct[cn] = (ct[cn]||0) + e.amount; }); });
+  expItems.forEach(e => { getCats(e).forEach(cn => { ct[cn] = (ct[cn]||0) + e.amount; }); });
   const active = CATS.filter(c=>ct[c.name]>0).sort((a,b)=>ct[b.name]-ct[a.name]);
 
   renderCatChart(active, ct);
   renderTrendChart();
 
-  document.getElementById('totalSpend').textContent = `$${total.toFixed(2)}`;
+  document.getElementById('totalSpend').textContent = `$${spentAll.toFixed(2)}`;
   const catTbl = document.getElementById('catTable');
   if (active.length===0) {
     catTbl.innerHTML = `<div class="empty-state"><span class="empty-icon">📭</span>No expenses yet this month</div>`;
@@ -1132,11 +1154,11 @@ function renderDash() {
       active.map(c=>`<tr>
         <td><span class="cdot" style="background:${c.color}"></span>${c.icon} ${c.name}</td>
         <td class="mono">$${ct[c.name].toFixed(2)}</td>
-        <td class="mono">${total>0?Math.round(ct[c.name]/total*100):0}%</td>
+        <td class="mono">${spentAll>0?Math.round(ct[c.name]/spentAll*100):0}%</td>
       </tr>`).join('') + `</tbody></table>`;
   }
 
-  renderInsights(exps, total, ct);
+  renderInsights(exps, spentAll, ct);
 
   const recent = [...exps].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,5);
   document.getElementById('recentList').innerHTML = recent.length===0
@@ -1151,20 +1173,28 @@ function txHTML(e, del) {
   const catLabel = cats.length === 1 ? cats[0] : cats.slice(0,2).join(', ') + (cats.length > 2 ? ` +${cats.length-2}` : '');
   const ds = new Date(e.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
   const _freq = e.freq || 'monthly';
+  const type = e.type || 'expense';
   const freqBadge = _freq==='yearly'
     ? `<span class="freq-badge yearly">📆 Yearly</span>`
     : _freq==='one-time'
     ? `<span class="freq-badge onetime">🔹 One-time</span>`
     : `<span class="freq-badge monthly">📅 Monthly</span>`;
+  const savedBadge = type==='saved'
+    ? `<span class="freq-badge yearly" style="margin-left:4px">💰 Saved</span>` : '';
+  const bizBadge   = cats.includes('Business') && type==='expense'
+    ? `<span class="freq-badge monthly" style="margin-left:4px;background:rgba(139,92,246,.15);color:#8b5cf6">💼 Biz</span>` : '';
+  const reimbBadge = e.reimbursable
+    ? `<span class="freq-badge ${e.reimb_status==='paid'?'yearly':'monthly'}" style="margin-left:4px">${e.reimb_status==='paid'?'✅ Paid':'⏳ Pending'}</span>` : '';
+  const amtColor = type==='saved' ? 'c-green' : '';
   return `<div class="tx-row" data-id="${e.id}" data-confirming="false">
     <div class="tx-inner">
       <div class="tx-icon">${meta.icon}</div>
       <div class="tx-info">
-        <div class="tx-cat">${catLabel}${freqBadge}</div>
+        <div class="tx-cat">${catLabel}${freqBadge}${savedBadge}${bizBadge}${reimbBadge}</div>
         <div class="tx-note">${e.note||'—'}</div>
       </div>
       <div class="tx-right">
-        <div class="tx-amount">$${e.amount.toFixed(2)}</div>
+        <div class="tx-amount ${amtColor}">$${e.amount.toFixed(2)}</div>
         <div class="tx-date">${ds}</div>
       </div>
       ${del?`<button class="tx-del" onclick="event.stopPropagation();delClick('${e.id}',this)" title="Delete">✕</button>`:''}
@@ -1305,12 +1335,18 @@ function renderTrendChart() {
 function renderHist() {
   const m = document.getElementById('histMonth').value;
   const c = document.getElementById('histCat').value;
-  const f = document.getElementById('histFreq').value;
-  const q = document.getElementById('histSearch').value.toLowerCase().trim();
+  const f  = document.getElementById('histFreq').value;
+  const tp = document.getElementById('histType').value;
+  const q  = document.getElementById('histSearch').value.toLowerCase().trim();
   let exps = load();
-  if (m) exps = exps.filter(e=>e.date.startsWith(m));
-  if (c) exps = exps.filter(e => getCats(e).includes(c));
-  if (f) exps = exps.filter(e=>(e.freq||'monthly')===f);
+  if (m)  exps = exps.filter(e=>e.date.startsWith(m));
+  if (c)  exps = exps.filter(e => getCats(e).includes(c));
+  if (f)  exps = exps.filter(e=>(e.freq||'monthly')===f);
+  if (tp==='expense')  exps = exps.filter(e=>(e.type||'expense')==='expense');
+  if (tp==='saved')    exps = exps.filter(e=>e.type==='saved');
+  if (tp==='business') exps = exps.filter(e=>getCats(e).includes('Business'));
+  if (tp==='pending')  exps = exps.filter(e=>e.reimbursable && e.reimb_status==='pending');
+  if (tp==='paid')     exps = exps.filter(e=>e.reimbursable && e.reimb_status==='paid');
   if (q) exps = exps.filter(e=>
     getCats(e).join(' ').toLowerCase().includes(q) ||
     (e.note||'').toLowerCase().includes(q) ||
@@ -1539,6 +1575,7 @@ function renderSettings() {
     const v = parseFloat(this.value);
     if (v > 0) document.getElementById('sMonthlyNet').value = Math.round(v/12);
   };
+  document.getElementById('sCountBiz').checked    = COUNT_BUSINESS_IN_FI;
   document.getElementById('settVer').textContent  = APP_VERSION + ' · schema v' + SCHEMA_VERSION;
   const ls = (() => { try { return localStorage.getItem('mo_last_sync')||''; } catch { return ''; } })();
   document.getElementById('settSync').textContent = ls ? new Date(ls).toLocaleString() : 'Never';
@@ -1550,8 +1587,9 @@ function saveSettingsForm() {
   const netAnnual   = parseFloat(document.getElementById('sAnnualNet').value)   || DEFAULTS.netAnnual;
   const netMonthly  = parseFloat(document.getElementById('sMonthlyNet').value)  || Math.round(netAnnual/12);
   const fiTarget    = parseFloat(document.getElementById('sFiTarget').value)    || DEFAULTS.fiTarget;
-  const fiCity      = document.getElementById('sFiCity').value.trim()           || DEFAULTS.fiCity;
-  applySettings({ grossAnnual, netAnnual, netMonthly, fiTarget, fiCity });
+  const fiCity             = document.getElementById('sFiCity').value.trim()      || DEFAULTS.fiCity;
+  const countBusinessInFI  = document.getElementById('sCountBiz').checked;
+  applySettings({ grossAnnual, netAnnual, netMonthly, fiTarget, fiCity, countBusinessInFI });
   const ok = document.getElementById('settOk');
   ok.textContent='✅ Settings saved!'; ok.style.display='block';
   setTimeout(()=>{ ok.style.display='none'; }, 2500);
