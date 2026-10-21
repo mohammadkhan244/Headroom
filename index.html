@@ -777,6 +777,11 @@ function init() {
 
 function finishInit() {
   runMigrations();
+  // Load cached Config/Balances from localStorage (populated by last sync)
+  try {
+    const cc = JSON.parse(localStorage.getItem('mo_config_cache')||'{}');
+    if (cc && Object.keys(cc).length) applyConfig(cc);
+  } catch {}
   buildMonthSels();
   document.getElementById('monthSel').value = selMonth;
   buildHistFilters();
@@ -1197,37 +1202,67 @@ function swipeDelete(id) {
 }
 
 // ── RECURRING ENTRIES ─────────────────────────────────────────────
-const RECURRING = [
-  { id:'roth', name:'Roth IRA', amount:538.33, type:'saved', categories:['Roth IRA'], day:1 }
-];
+// Templates come from Config.recurring (loaded after sync); no hardcoded values.
 
 function getDelRec() {
+  // Deleted-set is stored in localStorage as a cache; canonical copy is Config.deletedRecurringIds
   try { return new Set(JSON.parse(localStorage.getItem('mo_del_rec')||'[]')); } catch { return new Set(); }
 }
 function markDelRec(id) {
   const s=getDelRec(); s.add(id);
   try { localStorage.setItem('mo_del_rec', JSON.stringify([...s])); } catch {}
+  // Sync the deletion to Config sheet so other devices skip this id
+  const existing = Array.isArray(CONFIG.deletedRecurringIds) ? CONFIG.deletedRecurringIds : [];
+  if (!existing.includes(id)) {
+    const updated = [...existing, id];
+    CONFIG.deletedRecurringIds = updated;
+    queueOp({ op:'config_set', sheet:'Config', key:'deletedRecurringIds', value: updated });
+  }
 }
 function unmarkDelRec(id) {
   const s=getDelRec(); s.delete(id);
   try { localStorage.setItem('mo_del_rec', JSON.stringify([...s])); } catch {}
 }
 
+function getSyncedDelRec() {
+  // Union of local cache and synced Config set
+  const local  = getDelRec();
+  const synced = new Set(Array.isArray(CONFIG.deletedRecurringIds) ? CONFIG.deletedRecurringIds : []);
+  return new Set([...local, ...synced]);
+}
+
+function isDuplicateRecurring(r, ym, data) {
+  // Same account (or same category for legacy) + same type + same month, amount within ±15%
+  return data.some(e => {
+    if (!e.date.startsWith(ym)) return false;
+    if ((e.type||'expense') !== (r.type||'expense')) return false;
+    const amtMatch = Math.abs(e.amount - r.amount) / Math.max(r.amount, 1) <= 0.15;
+    if (!amtMatch) return false;
+    if (r.account && e.account === r.account) return true;
+    const rCat = (r.categories||[])[0] || '';
+    if (rCat && getCats(e).includes(rCat)) return true;
+    return false;
+  });
+}
+
 function checkRecurring() {
+  const templates = RECURRING_LIST.filter(r => r.active !== false);
+  if (!templates.length) return;
   const today=new Date(), ym=todayStr().slice(0,7), day=today.getDate();
-  const data=load(), ids=new Set(data.map(e=>e.id)), del=getDelRec();
+  const data=load(), ids=new Set(data.map(e=>e.id)), del=getSyncedDelRec();
   let created=false;
-  RECURRING.filter(r=>day>=r.day).forEach(r=>{
+  templates.filter(r=>day>=(r.day||1)).forEach(r=>{
     const recId=`rec-${r.id}-${ym}`;
-    if (ids.has(recId)||del.has(recId)) return;
+    if (ids.has(recId) || del.has(recId)) return;
+    if (isDuplicateRecurring(r, ym, data)) return; // manual entry already exists
     const entry={
-      id:recId, date:`${ym}-${String(r.day).padStart(2,'0')}`,
-      categories:r.categories, category:r.categories[0],
+      id:recId, date:`${ym}-${String(r.day||1).padStart(2,'0')}`,
+      categories:r.categories||['Other'], category:(r.categories||['Other'])[0],
       amount:r.amount, note:r.name, freq:'monthly',
       type:r.type||'expense', reimbursable:false, reimb_status:'pending',
-      createdAt:Date.now(), recurring_id:recId
+      account:r.account||'', createdAt:Date.now(), recurring_id:recId
     };
-    addRec(entry); queueOp({op:'upsert',row:entry}); created=true;
+    addRec(entry); queueOp({op:'upsert',sheet:'Expenses',row:entry}); created=true;
   });
   if (created) { buildMonthSels(); buildHistFilters(); renderDash(); renderHist(); }
 }
@@ -1588,54 +1623,56 @@ async function flushOutbox() {
   else setSyncState('idle');
 }
 
+function normalizeExpense(row) {
+  const cats = row.categories
+    ? String(row.categories).split('; ').map(s=>s.trim()).filter(Boolean)
+    : [String(row.category||'Other')];
+  return {
+    id:          String(row.id||''),
+    date:        String(row.date||''),
+    categories:  cats,
+    category:    cats[0]||'Other',
+    amount:      parseFloat(row.amount)||0,
+    note:        String(row.note||''),
+    freq:        String(row.freq||'monthly'),
+    type:        String(row.type||'expense'),
+    reimbursable: row.reimbursable===true || row.reimbursable==='TRUE',
+    reimb_status: String(row.reimb_status||'pending'),
+    recurring_id: String(row.recurring_id||'')||null,
+    account:     String(row.account||''),
+    createdAt:   +row.createdAt||0
+  };
+}
+
 async function fetchFromSheet() {
   setSyncState('syncing');
   try {
-    const ctrl = AbortSignal.timeout ? AbortSignal.timeout(12000) : undefined;
-    const res = await fetch(getSyncUrl() + '?t=' + Date.now(), {
+    const ctrl = AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
+    const res = await fetch(getSyncUrl() + '?sheet=all&t=' + Date.now(), {
       cache: 'no-store',
       headers: syncHeaders(),
       ...(ctrl ? { signal: ctrl } : {})
     });
     if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
-    if (!res.ok) {
-      setSyncState('error', 0, `Server returned ${res.status}`);
-      return;
-    }
+    if (!res.ok) { setSyncState('error', 0, `Server returned ${res.status}`); return; }
     const payload = await res.json().catch(() => null);
-    if (!payload) {
-      setSyncState('error', 0, 'Invalid response from server');
-      return;
-    }
+    if (!payload) { setSyncState('error', 0, 'Invalid response from server'); return; }
     if (payload.ok !== true) {
       setSyncState('error', 0, payload.error ? `Sheet error: ${payload.error}` : 'Sheet returned an error');
       return;
     }
-    if (!Array.isArray(payload.rows)) {
-      setSyncState('error', 0, 'No rows in response');
-      return;
+    // Expenses
+    if (Array.isArray(payload.expenses)) {
+      save(payload.expenses.map(normalizeExpense).filter(r => r.id && r.date));
+      replayOutbox();
     }
-    const normalized = payload.rows.map(row => {
-      const cats = row.categories
-        ? String(row.categories).split('; ').map(s=>s.trim()).filter(Boolean)
-        : [String(row.category||'Other')];
-      return {
-        id:          String(row.id||''),
-        date:        String(row.date||''),
-        categories:  cats,
-        category:    cats[0]||'Other',
-        amount:      parseFloat(row.amount)||0,
-        note:        String(row.note||''),
-        freq:        String(row.freq||'monthly'),
-        type:        String(row.type||'expense'),
-        reimbursable: row.reimbursable===true || row.reimbursable==='TRUE',
-        reimb_status: String(row.reimb_status||'pending'),
-        recurring_id: String(row.recurring_id||'')||null,
-        createdAt:   +row.createdAt||0
-      };
-    }).filter(r => r.id && r.date);
-    save(normalized);
-    replayOutbox();
+    // Balances
+    if (Array.isArray(payload.balances)) applyBalances(payload.balances);
+    // Config
+    if (payload.config && typeof payload.config === 'object') {
+      applyConfig(payload.config);
+      try { localStorage.setItem('mo_config_cache', JSON.stringify(payload.config)); } catch {}
+    }
     buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
     try { localStorage.setItem('mo_last_sync', new Date().toISOString()); } catch {}
     const q = getOutbox().length;

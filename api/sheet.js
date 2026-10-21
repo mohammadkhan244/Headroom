@@ -1,6 +1,7 @@
 const { timingSafeEqual } = require('crypto');
 
 const { SHEETS_URL, SHEET_SECRET, APP_PASSCODE } = process.env;
+const ALLOWED_SHEETS = new Set(['Expenses', 'Balances', 'Config', 'all']);
 
 function validPasscode(req) {
   const h = String(req.headers['x-passcode'] || '');
@@ -18,9 +19,14 @@ module.exports = async function handler(req, res) {
 
   res.setHeader('Cache-Control', 'no-store');
 
+  // Whitelist sheet param
+  const sheetParam = req.query.sheet || (req.body && req.body.sheet) || '';
+  const sheet = ALLOWED_SHEETS.has(sheetParam) ? sheetParam : 'Expenses';
+
   try {
     if (req.method === 'GET') {
-      const url = `${SHEETS_URL}?secret=${encodeURIComponent(SHEET_SECRET)}&t=${Date.now()}`;
+      const qs = sheet ? `&sheet=${encodeURIComponent(sheet)}` : '';
+      const url = `${SHEETS_URL}?secret=${encodeURIComponent(SHEET_SECRET)}&t=${Date.now()}${qs}`;
       const upstream = await fetch(url, { redirect: 'follow' });
       const data = await upstream.json();
       return res.json(data);
@@ -28,9 +34,11 @@ module.exports = async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = { ...req.body, secret: SHEET_SECRET };
+      if (sheetParam && ALLOWED_SHEETS.has(sheetParam)) body.sheet = sheetParam;
       const upstream = await fetch(SHEETS_URL, {
         method: 'POST',
         redirect: 'follow',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       const data = await upstream.json();
