@@ -117,8 +117,8 @@ body{
 /* Tx rows — outer is position:relative block; inner has the flex layout */
 .tx-row{display:block;padding:0;position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
 .tx-row:last-child{border-bottom:none}
-.tx-row[data-confirming="true"] .tx-del{color:var(--red);opacity:1}
-.tx-inner{display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--surface);transition:transform .2s ease;will-change:transform}
+
+.tx-inner{display:flex;align-items:center;gap:10px;padding:11px 16px;background:var(--surface);transition:transform .2s ease;will-change:transform;position:relative;z-index:1}
 #histList .tx-inner{cursor:pointer}
 #histList .tx-inner:hover{background:var(--surface2)}
 .tx-icon{font-size:18px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--surface2);border-radius:7px;flex-shrink:0}
@@ -128,8 +128,13 @@ body{
 .tx-right{text-align:right;flex-shrink:0}
 .tx-amount{font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace}
 .tx-date{font-size:11px;color:var(--fg2)}
-.tx-del{background:none;border:none;color:var(--fg2);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:4px;opacity:.5;transition:.15s;flex-shrink:0}
-.tx-del:hover{opacity:1;color:var(--red)}
+.tx-more-btn{background:none;border:none;color:var(--fg2);cursor:pointer;font-size:20px;padding:2px 8px;border-radius:4px;flex-shrink:0;line-height:1;-webkit-tap-highlight-color:transparent;transition:.12s}
+.tx-more-btn:hover{color:var(--fg);background:var(--surface2)}
+.tx-menu{display:flex;gap:8px;padding:8px 16px 10px;border-top:1px solid var(--border);background:var(--surface2);position:relative;z-index:1}
+.tx-menu[hidden]{display:none}
+.tx-menu-btn{flex:1;background:none;border:1px solid var(--border);color:var(--fg);padding:7px 4px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;white-space:nowrap}
+.tx-menu-btn.danger{color:var(--red);border-color:rgba(239,68,68,.3)}
+.tx-menu-btn:active{opacity:.7}
 .tx-del-action{position:absolute;right:0;top:0;bottom:0;width:82px;background:var(--red);color:#fff;border:none;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;z-index:0;-webkit-tap-highlight-color:transparent}
 .tx-del-action .da-icon{font-size:18px}
 .tx-del-action .da-label{font-size:10px;font-weight:700;letter-spacing:.04em}
@@ -1440,8 +1445,13 @@ function txHTML(e, del) {
         <div class="tx-amount ${amtColor}">$${e.amount.toFixed(2)}</div>
         <div class="tx-date">${ds}</div>
       </div>
-      ${del?`<button class="tx-del" onclick="event.stopPropagation();delClick('${e.id}',this)" title="Delete">✕</button>`:''}
+      ${del?`<button class="tx-more-btn" onclick="event.stopPropagation();toggleTxMenu('${e.id}')" title="Actions" aria-label="Row actions">⋯</button>`:''}
     </div>
+    ${del?`<div class="tx-menu" id="tx-menu-${e.id}" hidden>
+      <button class="tx-menu-btn" onclick="editExpense('${e.id}');toggleTxMenu('${e.id}')">✏ Edit</button>
+      <button class="tx-menu-btn danger" onclick="swipeDelete('${e.id}')">🗑 Delete</button>
+      <button class="tx-menu-btn" onclick="syncEntry('${e.id}')">☁ Sync</button>
+    </div>`:''}
     ${del?`<button class="tx-del-action" onclick="swipeDelete('${e.id}')"><span class="da-icon">🗑</span><span class="da-label">Delete</span></button>`:''}
   </div>`;
 }
@@ -1472,6 +1482,24 @@ function swipeDelete(id) {
     showToast('Undo successful', 'success');
   });
   queueOp({ op: 'delete', id });
+}
+
+function toggleTxMenu(id) {
+  document.querySelectorAll('.tx-menu:not([hidden])').forEach(m => {
+    if (m.id !== `tx-menu-${id}`) m.hidden = true;
+  });
+  const menu = document.getElementById(`tx-menu-${id}`);
+  if (menu) menu.hidden = !menu.hidden;
+}
+
+function syncEntry(id) {
+  const entry = load().find(e => e.id === id);
+  if (!entry) { showToast('Entry not found'); return; }
+  queueOp({ op:'upsert', sheet:'Expenses', row: prepareForSync(entry) });
+  const menu = document.getElementById(`tx-menu-${id}`);
+  if (menu) menu.hidden = true;
+  flushOutbox();
+  showToast('Queued for sync');
 }
 
 // ── RECURRING ENTRIES ─────────────────────────────────────────────
@@ -1574,8 +1602,8 @@ function initSwipeDelete() {
     const dy = Math.abs(e.changedTouches[0].clientY - startY);
     activeInner.style.transition = '';
     if (dy < 15 && Math.abs(dx) < 10) {
-      // tap — open edit sheet (unless tapped delete button)
-      if (!e.target.closest('.tx-del')) {
+      // tap — open edit sheet (unless tapped the ⋯ menu button)
+      if (!e.target.closest('.tx-more-btn')) {
         const row = activeInner.closest('.tx-row[data-id]');
         if (row) editExpense(row.dataset.id);
       }
