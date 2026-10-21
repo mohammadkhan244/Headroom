@@ -1,6 +1,7 @@
 // Headroom — Google Apps Script backend v3
 // Deploy: Extensions → Apps Script → Deploy → New deployment → Web app
 // Execute as: Me | Access: Anyone with the link
+// Script Properties required: SHEET_SECRET, SPREADSHEET_ID
 
 const SHEET_NAMES = ['Expenses', 'Balances', 'Config'];
 
@@ -19,16 +20,18 @@ function getSheetName(e) {
   return ALLOWED_SHEETS.has(name) ? name : 'Expenses';
 }
 
+// Works for both standalone scripts (needs SPREADSHEET_ID property) and container-bound scripts.
+function getSpreadsheet() {
+  const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+}
+
 function doGet(e) {
   const secret = e && e.parameter && e.parameter.secret;
   if (!checkSecret(secret)) return unauthorized();
-  const sheetParam = getSheetName(e);
-  if (sheetParam === 'all') {
-    // Not reachable via getSheetName — handled below
-  }
   // sheet=all: return all three
   if (e && e.parameter && e.parameter.sheet === 'all') {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ss = getSpreadsheet();
     return ok({
       ok: true,
       expenses: sheetToRows(getOrCreate(ss, 'Expenses')),
@@ -36,7 +39,8 @@ function doGet(e) {
       config:   configToMap(getOrCreate(ss, 'Config'))
     });
   }
-  return ok({ ok: true, rows: sheetToRows(getOrCreate(SpreadsheetApp.getActiveSpreadsheet(), sheetParam)) });
+  const sheetParam = getSheetName(e);
+  return ok({ ok: true, rows: sheetToRows(getOrCreate(getSpreadsheet(), sheetParam)) });
 }
 
 function doPost(e) {
@@ -44,7 +48,7 @@ function doPost(e) {
   if (!checkSecret(body.secret)) return unauthorized();
 
   const sheetName = ALLOWED_SHEETS.has(body.sheet) ? body.sheet : 'Expenses';
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sheet = getOrCreate(ss, sheetName);
 
   if (body.op === 'upsert') {
