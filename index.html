@@ -455,13 +455,13 @@ body{
       <div class="form-group">
         <label class="form-label">Annual Gross Salary</label>
         <div class="amt-wrap"><span class="amt-prefix">$</span>
-          <input type="number" inputmode="decimal" class="form-input amt-input" id="sAnnualGross" step="0.01" placeholder="107800.16">
+          <input type="number" inputmode="decimal" class="form-input amt-input" id="sAnnualGross" step="0.01" placeholder="Annual gross">
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Annual Net (take-home)</label>
         <div class="amt-wrap"><span class="amt-prefix">$</span>
-          <input type="number" inputmode="decimal" class="form-input amt-input" id="sAnnualNet" step="0.01" placeholder="76151.92">
+          <input type="number" inputmode="decimal" class="form-input amt-input" id="sAnnualNet" step="0.01" placeholder="Annual net">
         </div>
         <p style="font-size:11px;color:var(--fg2);margin-top:5px">Changing this auto-calculates monthly net below.</p>
       </div>
@@ -609,8 +609,8 @@ body{
 
 <script>
 // ── CONSTANTS / SETTINGS ─────────────────────────────────────────
-const APP_VERSION    = '2026-10-18';
-const SCHEMA_VERSION = 2;
+const APP_VERSION    = '2026-10-20';
+const SCHEMA_VERSION = 3;
 
 function migrateData(data) {
   return data.map(e => ({
@@ -620,6 +620,7 @@ function migrateData(data) {
     reimbursable: e.reimbursable === true || e.reimbursable === 'TRUE',
     reimb_status: e.reimb_status || 'pending',
     recurring_id: e.recurring_id || null,
+    account:      e.account || '',
   }));
 }
 function runMigrations() {
@@ -627,29 +628,50 @@ function runMigrations() {
   if (v < SCHEMA_VERSION) { save(load()); try{localStorage.setItem('mo_schema_version',SCHEMA_VERSION);}catch{} }
 }
 
-const DEFAULTS = { grossAnnual:107800.16, netAnnual:64394.88, netMonthly:5366, fiTarget:3000, fiCity:'Columbus, OH' };
-let NET_MONTHLY, FI_TARGET, ANNUAL_GROSS, ANNUAL_NET, FI_CITY;
+// Income/FI loaded from Config after auth — no hardcoded values here
+const DEFAULTS = { netMonthly:0, fiTarget:3000, fiCity:'Columbus, OH' };
+let NET_MONTHLY = 0, FI_TARGET = 3000, ANNUAL_GROSS = 0, ANNUAL_NET = 0, FI_CITY = 'Columbus, OH';
 let COUNT_BUSINESS_IN_FI = true;
+
+// App-wide Config and Balances (loaded from Sheet after auth)
+let CONFIG   = {};   // key→value from Config sheet
+let BALANCES = [];   // [{id,name,kind,balance,...}]
+let RECURRING_LIST = [];  // from Config.recurring
+
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem('mo_settings')||'{}');
-    ANNUAL_GROSS           = +s.grossAnnual || DEFAULTS.grossAnnual;
-    ANNUAL_NET             = +s.netAnnual   || DEFAULTS.netAnnual;
-    NET_MONTHLY            = +s.netMonthly  || DEFAULTS.netMonthly;
-    FI_TARGET              = +s.fiTarget    || DEFAULTS.fiTarget;
-    FI_CITY                = s.fiCity       || DEFAULTS.fiCity;
+    ANNUAL_GROSS           = +s.grossAnnual  || 0;
+    ANNUAL_NET             = +s.netAnnual    || 0;
+    NET_MONTHLY            = +s.netMonthly   || (ANNUAL_NET ? Math.round(ANNUAL_NET/12) : 0);
+    FI_TARGET              = +s.fiTarget     || DEFAULTS.fiTarget;
+    FI_CITY                = s.fiCity        || DEFAULTS.fiCity;
     COUNT_BUSINESS_IN_FI   = s.countBusinessInFI !== false;
   } catch {
-    ANNUAL_GROSS=DEFAULTS.grossAnnual; ANNUAL_NET=DEFAULTS.netAnnual;
-    NET_MONTHLY=DEFAULTS.netMonthly; FI_TARGET=DEFAULTS.fiTarget; FI_CITY=DEFAULTS.fiCity;
+    NET_MONTHLY=0; FI_TARGET=DEFAULTS.fiTarget; FI_CITY=DEFAULTS.fiCity;
     COUNT_BUSINESS_IN_FI=true;
   }
 }
 function applySettings(s) {
-  ANNUAL_GROSS=+s.grossAnnual; ANNUAL_NET=+s.netAnnual;
-  NET_MONTHLY=+s.netMonthly; FI_TARGET=+s.fiTarget; FI_CITY=s.fiCity||DEFAULTS.fiCity;
+  if (s.grossAnnual) ANNUAL_GROSS = +s.grossAnnual;
+  if (s.netAnnual)   ANNUAL_NET   = +s.netAnnual;
+  if (s.netMonthly)  NET_MONTHLY  = +s.netMonthly;
+  if (s.fiTarget)    FI_TARGET    = +s.fiTarget;
+  if (s.fiCity)      FI_CITY      = s.fiCity;
   if (s.countBusinessInFI !== undefined) COUNT_BUSINESS_IN_FI = s.countBusinessInFI !== false;
-  try { localStorage.setItem('mo_settings', JSON.stringify(s)); } catch {}
+  const stored = JSON.parse(localStorage.getItem('mo_settings')||'{}');
+  try { localStorage.setItem('mo_settings', JSON.stringify({...stored, ...s})); } catch {}
+}
+
+function applyConfig(cfg) {
+  CONFIG = cfg || {};
+  if (cfg.netAnnual)   { ANNUAL_NET = +cfg.netAnnual; NET_MONTHLY = Math.round(ANNUAL_NET/12); }
+  if (cfg.grossAnnual) ANNUAL_GROSS = +cfg.grossAnnual;
+  if (cfg.fiTarget)    FI_TARGET    = +cfg.fiTarget;
+  RECURRING_LIST = Array.isArray(cfg.recurring) ? cfg.recurring : [];
+}
+function applyBalances(rows) {
+  BALANCES = Array.isArray(rows) ? rows : [];
 }
 
 const CATS = [
