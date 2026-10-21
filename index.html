@@ -226,6 +226,43 @@ body{
 .eq-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--fg)}
 .eq-row span:last-child{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--green)}
 
+/* Runway hero */
+.runway-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:16px}
+.runway-hero{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.runway-months{font-size:40px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1}
+.runway-label{font-size:12px;color:var(--fg2);font-weight:500}
+.milestone-row{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.milestone-item{display:flex;flex-direction:column;gap:4px}
+.milestone-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--fg2)}
+.milestone-meta span:last-child{font-family:'JetBrains Mono',monospace;font-weight:600}
+.milestone-track{height:6px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.milestone-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .4s ease}
+.milestone-fill.done{background:var(--green)}
+
+/* Balances section */
+.balances-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden}
+.balances-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.bal-group{padding:0 16px}
+.bal-group-hdr{font-size:10px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.05em;padding:10px 0 6px;border-bottom:1px solid var(--border)}
+.bal-item{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;gap:8px;-webkit-tap-highlight-color:transparent}
+.bal-item:last-of-type{border-bottom:none}
+.bal-item-name{font-size:13px;color:var(--fg);flex:1}
+.bal-item-sub{font-size:11px;color:var(--fg2)}
+.bal-item-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--fg);text-align:right;flex-shrink:0}
+.bal-item.speculative .bal-item-val,.bal-item.speculative .bal-item-name{color:var(--fg2)}
+.bal-edit-row{display:none;gap:8px;align-items:center;padding:6px 0 10px}
+.bal-edit-row.open{display:flex}
+.bal-edit-input{flex:1;background:var(--surface2);border:1.5px solid var(--accent);color:var(--fg);padding:8px 10px;border-radius:8px;font-size:15px;font-family:'JetBrains Mono',monospace;-webkit-appearance:none;min-width:0}
+.bal-edit-input:focus{outline:none}
+.bal-save-btn{background:var(--accent);color:#000;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.bal-cancel-btn{background:none;border:1px solid var(--border);color:var(--fg2);padding:8px 12px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit}
+.bal-excluded-toggle{background:none;border:none;color:var(--fg2);font-size:12px;cursor:pointer;padding:8px 0;width:100%;text-align:left;font-family:inherit}
+.stale-badge{font-size:10px;background:var(--red-bg);color:var(--red);border-radius:4px;padding:2px 5px;margin-left:6px;font-weight:600;vertical-align:middle}
+
+/* FI target banner */
+.fi-target-banner{background:var(--accent-bg);border:1px solid rgba(224,140,20,.4);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+.fi-target-banner button{background:var(--accent);color:#000;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
+
 /* ── Passcode screen ────────────────────────────────── */
 .pc-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
 .pc-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 28px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.15)}
@@ -357,23 +394,29 @@ body{
 
   <!-- DASHBOARD -->
   <section class="tab-pane active" id="tab-dashboard">
-    <div class="stats-grid" id="statsGrid"></div>
-    <div class="fi-card">
-      <div class="fi-header">
-        <span class="fi-title">Financial Independence Progress</span>
-        <span class="fi-badge" id="fiBadge"></span>
-      </div>
-      <div class="fi-bg"><div class="fi-fill" id="fiBar" style="width:0%"></div></div>
-      <div class="fi-ticks"><span>$0</span><span id="fiTickFI">FI: $3,000</span><span id="fiTickNet">Net: $6,346</span></div>
-      <div class="fi-legend">
-        <div class="fi-leg-item"><div class="fi-dot" style="background:var(--green)"></div><span id="fiLegLabel">FI target ($3K/mo Columbus, OH)</span></div>
-        <div class="fi-leg-item"><div class="fi-dot" style="background:var(--accent)"></div><span>Actual spend</span></div>
-        <div class="fi-leg-item"><div class="fi-dot" style="background:var(--fg2)"></div><span>Net income ($6,346)</span></div>
-      </div>
+    <div id="fiTargetBanner" class="fi-target-banner" hidden>
+      <span id="fiTargetBannerText">⚠ FI target unconfirmed — does this match your all-in solo monthly cost?</span>
+      <button onclick="confirmFiTarget()">Confirm</button>
     </div>
+    <div id="runwayCard" class="runway-card"></div>
     <div class="insights-card">
       <div class="insights-title">💡 Advisor Notes</div>
       <div id="insightsList"></div>
+    </div>
+    <div class="stats-grid" id="statsGrid"></div>
+    <div id="balancesCard" class="balances-card" hidden></div>
+    <div class="fi-card">
+      <div class="fi-header">
+        <span class="fi-title">Spend vs FI Target</span>
+        <span class="fi-badge" id="fiBadge"></span>
+      </div>
+      <div class="fi-bg"><div class="fi-fill" id="fiBar" style="width:0%"></div></div>
+      <div class="fi-ticks"><span>$0</span><span id="fiTickFI">FI: $3,000</span><span id="fiTickNet">Net: —</span></div>
+      <div class="fi-legend">
+        <div class="fi-leg-item"><div class="fi-dot" style="background:var(--green)"></div><span id="fiLegLabel">FI target ($3K/mo)</span></div>
+        <div class="fi-leg-item"><div class="fi-dot" style="background:var(--accent)"></div><span>Actual spend</span></div>
+        <div class="fi-leg-item"><div class="fi-dot" style="background:var(--fg2)"></div><span id="fiLegNet">Net income</span></div>
+      </div>
     </div>
     <div class="charts-row">
       <div class="chart-card">
@@ -398,14 +441,6 @@ body{
         <button class="sec-link" onclick="switchTab('history')">All →</button>
       </div>
       <div id="recentList"></div>
-    </div>
-    <div class="eq-card">
-      <div class="eq-title">⚡ Path Robotics Equity</div>
-      <div class="eq-row"><span>New Hire Grant (900 ISOs @ $3.79)</span><span>Cliff Jan 26 2027</span></div>
-      <div class="eq-row"><span>Promotion Grant (1,483 ISOs @ $3.79)</span><span>Cliff Jul 29 2027</span></div>
-      <div class="eq-row"><span>Total: 2,383 ISOs</span><span>2,383 options</span></div>
-      <div class="eq-row"><span>Est. value @ $60/sh IPO</span><span>~$133,797</span></div>
-      <div class="eq-row"><span>Est. value @ $120/sh IPO</span><span>~$276,195</span></div>
     </div>
   </section>
 
@@ -1054,20 +1089,32 @@ function renderDash() {
     : expItems.filter(e => !getCats(e).includes('Business')).reduce((s,e)=>s+e.amount, 0);
   const savedAmt  = savedItems.reduce((s,e)=>s+e.amount, 0);
   const leftInCash= NET_MONTHLY - spentAll - savedAmt;
-  const rate      = Math.round(((NET_MONTHLY - spent) / NET_MONTHLY) * 100);
+  const savingsRate = NET_MONTHLY > 0 ? Math.round(savedAmt / NET_MONTHLY * 100) : 0;
 
-  const el_t1=document.getElementById('fiTickFI'),el_t2=document.getElementById('fiTickNet'),el_leg=document.getElementById('fiLegLabel');
+  // Runway
+  const liquidBal  = BALANCES.filter(b=>b.kind==='liquid').reduce((s,b)=>s+(+b.balance||0),0);
+  const runwayMos  = FI_TARGET > 0 ? liquidBal / FI_TARGET : 0;
+  const milestones = Array.isArray(CONFIG.milestones) ? CONFIG.milestones : [3,6];
+
+  // FI target confirmation banner
+  const banner = document.getElementById('fiTargetBanner');
+  if (banner) {
+    banner.hidden = CONFIG.fiTargetConfirmed !== false;
+    const bt = document.getElementById('fiTargetBannerText');
+    if (bt) bt.textContent = `⚠ FI target ($${FI_TARGET.toLocaleString()}/mo) is unconfirmed — is this your all-in solo monthly cost?`;
+  }
+
+  renderRunwayCard(runwayMos, liquidBal, milestones);
+  renderBalances();
+
+  const el_t1=document.getElementById('fiTickFI'),el_t2=document.getElementById('fiTickNet'),el_leg=document.getElementById('fiLegLabel'),el_legn=document.getElementById('fiLegNet');
   if(el_t1) el_t1.textContent=`FI: $${FI_TARGET.toLocaleString()}`;
-  if(el_t2) el_t2.textContent=`Net: $${NET_MONTHLY.toLocaleString()}`;
+  if(el_t2) el_t2.textContent=NET_MONTHLY?`Net: $${NET_MONTHLY.toLocaleString()}`:`Net: —`;
   if(el_leg) { const _k=FI_TARGET>=1000?`$${(FI_TARGET/1000).toFixed(FI_TARGET%1000===0?0:1)}K`:`$${FI_TARGET}`; el_leg.textContent=`FI target (${_k}/mo ${FI_CITY})`; }
+  if(el_legn && NET_MONTHLY) el_legn.textContent=`Net income ($${NET_MONTHLY.toLocaleString()})`;
 
-  const rateColor = rate>=50?'c-green':rate>=10?'c-amber':'c-red';
+  const rateColor = savingsRate>=30?'c-green':savingsRate>=15?'c-amber':'c-red';
   document.getElementById('statsGrid').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Net Monthly</div>
-      <div class="stat-value">$${NET_MONTHLY.toLocaleString()}</div>
-      <div class="stat-sub">$${ANNUAL_NET.toLocaleString()} annual</div>
-    </div>
     <div class="stat-card">
       <div class="stat-label">Spent ${monthLabel(selMonth)}</div>
       <div class="stat-value ${spent>FI_TARGET?'c-amber':'c-green'}">$${spent.toFixed(0)}</div>
@@ -1085,26 +1132,24 @@ function renderDash() {
     </div>
     <div class="stat-card">
       <div class="stat-label">Savings Rate</div>
-      <div class="stat-value ${rateColor}">${rate}%</div>
-      <div class="stat-sub">$${savedAmt.toFixed(0)} saved · $${spent.toFixed(0)} spent</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">FI Buffer</div>
-      <div class="stat-value c-green">+$${(NET_MONTHLY-FI_TARGET).toLocaleString()}</div>
-      <div class="stat-sub">Earn ${Math.round(NET_MONTHLY/FI_TARGET*100)}% of FI target</div>
+      <div class="stat-value ${rateColor}">${savingsRate}%</div>
+      <div class="stat-sub">$${savedAmt.toFixed(0)} saved of $${NET_MONTHLY?NET_MONTHLY.toLocaleString():'—'}/mo</div>
     </div>
   `;
 
-  const pct = Math.min(spent/NET_MONTHLY*100, 100);
+  const denomBar = Math.max(NET_MONTHLY, FI_TARGET, 1);
+  const pct = Math.min(spent/denomBar*100, 100);
   const bar = document.getElementById('fiBar');
   const badge = document.getElementById('fiBadge');
-  bar.style.width = `${pct}%`;
-  if (spent<=FI_TARGET) {
-    bar.style.background='var(--green)'; badge.className='fi-badge good'; badge.textContent='✓ Under FI Target';
-  } else if (spent<=NET_MONTHLY) {
-    bar.style.background='var(--accent)'; badge.className='fi-badge warn'; badge.textContent=`⚠ $${(spent-FI_TARGET).toFixed(0)} over target`;
-  } else {
-    bar.style.background='var(--red)'; badge.className='fi-badge bad'; badge.textContent='✗ Over Income';
+  if (bar) bar.style.width = `${pct}%`;
+  if (bar && badge) {
+    if (spent<=FI_TARGET) {
+      bar.style.background='var(--green)'; badge.className='fi-badge good'; badge.textContent='✓ Under FI Target';
+    } else if (!NET_MONTHLY || spent<=NET_MONTHLY) {
+      bar.style.background='var(--accent)'; badge.className='fi-badge warn'; badge.textContent=`⚠ $${(spent-FI_TARGET).toFixed(0)} over target`;
+    } else {
+      bar.style.background='var(--red)'; badge.className='fi-badge bad'; badge.textContent='✗ Over Income';
+    }
   }
 
   const ct = {};
@@ -1134,6 +1179,129 @@ function renderDash() {
   document.getElementById('recentList').innerHTML = recent.length===0
     ? `<div class="empty-state"><span class="empty-icon">🧾</span>No transactions — tap ➕ to start</div>`
     : recent.map(e=>txHTML(e,false)).join('');
+}
+
+// ── RUNWAY CARD ───────────────────────────────────────────────────
+function renderRunwayCard(runwayMos, liquidBal, milestones) {
+  const card = document.getElementById('runwayCard');
+  if (!card) return;
+  const m3 = milestones[0]||3, m6 = milestones[1]||6;
+  if (BALANCES.length === 0) {
+    card.innerHTML = `<div style="font-size:11px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Liquid Runway</div><div style="font-size:13px;color:var(--fg2)">Sync to load balances</div>`;
+    return;
+  }
+  const pct3 = Math.min(runwayMos/m3*100,100), pct6 = Math.min(runwayMos/m6*100,100);
+  const gap3 = Math.max(0,(m3*FI_TARGET)-liquidBal), gap6 = Math.max(0,(m6*FI_TARGET)-liquidBal);
+  const color = runwayMos>=m3?'c-green':runwayMos>=1?'c-amber':'c-red';
+  card.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Liquid Runway</div>
+    <div class="runway-hero">
+      <div class="runway-months ${color}">${runwayMos.toFixed(1)}</div>
+      <div class="runway-label">months &nbsp;·&nbsp; $${liquidBal.toLocaleString(undefined,{maximumFractionDigits:0})} ÷ $${FI_TARGET.toLocaleString()}/mo</div>
+    </div>
+    <div class="milestone-row">
+      <div class="milestone-item">
+        <div class="milestone-meta"><span>${m3}-month goal${runwayMos>=m3?' ✓':''}</span><span>${runwayMos>=m3?'Reached':'-$'+gap3.toLocaleString(undefined,{maximumFractionDigits:0})+' to go'}</span></div>
+        <div class="milestone-track"><div class="milestone-fill${pct3>=100?' done':''}" style="width:${pct3}%"></div></div>
+      </div>
+      <div class="milestone-item">
+        <div class="milestone-meta"><span>${m6}-month goal${runwayMos>=m6?' ✓':''}</span><span>${runwayMos>=m6?'Reached':'-$'+gap6.toLocaleString(undefined,{maximumFractionDigits:0})+' to go'}</span></div>
+        <div class="milestone-track"><div class="milestone-fill${pct6>=100?' done':''}" style="width:${pct6}%"></div></div>
+      </div>
+    </div>`;
+}
+
+// ── BALANCES ──────────────────────────────────────────────────────
+function renderBalances() {
+  const card = document.getElementById('balancesCard');
+  if (!card) return;
+  if (BALANCES.length === 0) { card.hidden = true; return; }
+  card.hidden = false;
+  const groups = { liquid:[], invested:[], speculative:[], excluded:[] };
+  BALANCES.forEach(b => { if (groups[b.kind]) groups[b.kind].push(b); });
+  const scenarios = Array.isArray(CONFIG.equityScenarios) ? CONFIG.equityScenarios : [60,120];
+  const today = new Date();
+  function isStale(b) {
+    if (!b.asOf) return false;
+    return (today - new Date(b.asOf)) / 86400000 > 30;
+  }
+  function fmtBal(b) {
+    return b.balance != null ? `$${(+b.balance).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+  }
+  function balRow(b) {
+    const stale = isStale(b) ? `<span class="stale-badge">stale</span>` : '';
+    const asOfStr = b.asOf ? new Date(b.asOf+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    const sub = b.apy ? `${b.apy}% APY` : (asOfStr ? `as of ${asOfStr}` : '');
+    return `<div class="bal-item" onclick="toggleBalEdit('${b.id}')">
+      <div style="flex:1;min-width:0">
+        <div class="bal-item-name">${b.name}${stale}</div>
+        ${sub?`<div class="bal-item-sub">${sub}</div>`:''}
+      </div>
+      <div class="bal-item-val">${fmtBal(b)}</div>
+    </div>
+    <div class="bal-edit-row" id="bal-edit-${b.id}">
+      <input class="bal-edit-input" id="bal-val-${b.id}" type="number" step="0.01" value="${b.balance!=null?+b.balance:''}" placeholder="0.00">
+      <button class="bal-save-btn" onclick="event.stopPropagation();saveBalEdit('${b.id}')">Save</button>
+      <button class="bal-cancel-btn" onclick="event.stopPropagation();toggleBalEdit('${b.id}')">✕</button>
+    </div>`;
+  }
+  function specRow(b) {
+    const stale = isStale(b) ? `<span class="stale-badge">stale</span>` : '';
+    const vals = scenarios.map(px=>`$${Math.round((+b.shares||0)*(px-(+b.strike||0))/1000)}K @ $${px}`).join(' / ');
+    const cliff = b.cliff ? new Date(b.cliff+'T12:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '';
+    return `<div class="bal-item speculative">
+      <div style="flex:1;min-width:0">
+        <div class="bal-item-name">${b.name}${stale}</div>
+        <div class="bal-item-sub">${b.shares||0} shares @ $${b.strike||0} strike${cliff?' · cliff '+cliff:''}</div>
+      </div>
+      <div class="bal-item-val">${vals}<div style="font-size:10px;color:var(--fg2)">(pre-tax est.)</div></div>
+    </div>`;
+  }
+  let html = `<div class="balances-head"><span class="sec-title">Balances</span><span style="font-size:11px;color:var(--fg2)">Tap to edit</span></div>`;
+  if (groups.liquid.length) {
+    const tot = groups.liquid.reduce((s,b)=>s+(+b.balance||0),0);
+    html += `<div class="bal-group"><div class="bal-group-hdr">Liquid &nbsp;·&nbsp; Runway ($${tot.toLocaleString(undefined,{maximumFractionDigits:0})})</div>${groups.liquid.map(balRow).join('')}</div>`;
+  }
+  if (groups.invested.length) {
+    const tot = groups.invested.reduce((s,b)=>s+(+b.balance||0),0);
+    html += `<div class="bal-group"><div class="bal-group-hdr">Invested &nbsp;·&nbsp; Not runway ($${tot.toLocaleString(undefined,{maximumFractionDigits:0})})</div>${groups.invested.map(balRow).join('')}</div>`;
+  }
+  if (groups.speculative.length) {
+    html += `<div class="bal-group"><div class="bal-group-hdr">Speculative &nbsp;·&nbsp; Unvested, pre-tax est.</div>${groups.speculative.map(specRow).join('')}</div>`;
+  }
+  if (groups.excluded.length) {
+    html += `<div class="bal-group"><button class="bal-excluded-toggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.textContent=this.nextElementSibling.hidden?'▶ Show excluded (borrowed)':'▼ Hide excluded'">▶ Show excluded (borrowed)</button><div hidden>${groups.excluded.map(balRow).join('')}</div></div>`;
+  }
+  card.innerHTML = html;
+}
+
+function toggleBalEdit(id) {
+  const row = document.getElementById(`bal-edit-${id}`);
+  if (!row) return;
+  const open = row.classList.toggle('open');
+  if (open) setTimeout(()=>{ const inp=document.getElementById(`bal-val-${id}`); if(inp){inp.focus();inp.select();} },50);
+}
+
+function saveBalEdit(id) {
+  const input = document.getElementById(`bal-val-${id}`);
+  if (!input) return;
+  const val = parseFloat(input.value);
+  if (isNaN(val)) { input.style.borderColor='var(--red)'; return; }
+  const idx = BALANCES.findIndex(b=>b.id===id);
+  if (idx < 0) return;
+  BALANCES[idx] = { ...BALANCES[idx], balance: val, asOf: todayStr(), updatedAt: Date.now() };
+  queueOp({ op:'upsert', sheet:'Balances', row: BALANCES[idx] });
+  const row = document.getElementById(`bal-edit-${id}`);
+  if (row) row.classList.remove('open');
+  renderDash();
+  showToast('Balance updated');
+}
+
+function confirmFiTarget() {
+  CONFIG.fiTargetConfirmed = true;
+  queueOp({ op:'config_set', sheet:'Config', key:'fiTargetConfirmed', value: true });
+  const banner = document.getElementById('fiTargetBanner');
+  if (banner) banner.hidden = true;
 }
 
 // ── TX ROW ────────────────────────────────────────────────────────
