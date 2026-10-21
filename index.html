@@ -267,6 +267,18 @@ body{
 .fi-target-banner{background:var(--accent-bg);border:1px solid rgba(224,140,20,.4);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
 .fi-target-banner button{background:var(--accent);color:#000;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
 
+/* Repeat chips */
+.repeat-chips-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 16px;margin-bottom:16px}
+.repeat-chips-title{font-size:10px;font-weight:700;color:var(--fg2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.repeat-chips-row{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+.repeat-chips-row::-webkit-scrollbar{display:none}
+.repeat-chip{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;font-family:inherit;white-space:nowrap;min-width:72px;flex-shrink:0;-webkit-tap-highlight-color:transparent;transition:.1s}
+.repeat-chip:active{opacity:.7;transform:scale(.96)}
+.rc-icon{font-size:18px;line-height:1}
+.rc-label{font-size:11px;color:var(--fg2);max-width:72px;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.rc-amt{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--fg)}
+.repeat-chip.saved .rc-amt{color:var(--green)}
+
 /* ── Passcode screen ────────────────────────────────── */
 .pc-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
 .pc-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 28px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.15)}
@@ -406,6 +418,10 @@ body{
     <div class="insights-card">
       <div class="insights-title">💡 Advisor Notes</div>
       <div id="insightsList"></div>
+    </div>
+    <div id="repeatChipsCard" class="repeat-chips-card" hidden>
+      <div class="repeat-chips-title">Quick add</div>
+      <div class="repeat-chips-row" id="repeatChipsList"></div>
     </div>
     <div class="stats-grid" id="statsGrid"></div>
     <div id="balancesCard" class="balances-card" hidden></div>
@@ -1178,6 +1194,7 @@ function renderDash() {
   }
 
   renderInsights(exps, spentAll, ct);
+  renderRepeatChips();
 
   const recent = [...exps].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt).slice(0,5);
   document.getElementById('recentList').innerHTML = recent.length===0
@@ -1306,6 +1323,80 @@ function confirmFiTarget() {
   queueOp({ op:'config_set', sheet:'Config', key:'fiTargetConfirmed', value: true });
   const banner = document.getElementById('fiTargetBanner');
   if (banner) banner.hidden = true;
+}
+
+// ── REPEAT CHIPS ──────────────────────────────────────────────────
+function getRepeatTemplates() {
+  const data = load().sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  const seen = new Set(), templates = [];
+  for (const e of data) {
+    const key = `${getCats(e).join('|')}|${e.amount}|${e.type||'expense'}|${e.account||''}`;
+    if (!seen.has(key)) { seen.add(key); templates.push(e); if (templates.length >= 5) break; }
+  }
+  return templates;
+}
+
+function renderRepeatChips() {
+  const card = document.getElementById('repeatChipsCard');
+  const list = document.getElementById('repeatChipsList');
+  if (!card || !list) return;
+  const templates = getRepeatTemplates();
+  if (templates.length === 0) { card.hidden = true; return; }
+  card.hidden = false;
+  list.innerHTML = templates.map(e => {
+    const cats = getCats(e), meta = getCatMeta(cats[0]);
+    const label = cats.length === 1 ? cats[0] : cats.slice(0,2).join(', ');
+    const type  = e.type || 'expense';
+    const amtStr = (type==='saved'?'+':'') + '$' + e.amount.toFixed(type==='saved'?2:0);
+    return `<button class="repeat-chip${type==='saved'?' saved':''}" onclick="quickLog('${e.id}')">
+      <span class="rc-icon">${meta.icon}</span>
+      <span class="rc-label">${label}</span>
+      <span class="rc-amt">${amtStr}</span>
+    </button>`;
+  }).join('');
+}
+
+function quickLog(origId) {
+  const orig = load().find(e => e.id === origId);
+  if (!orig) return;
+  if ((orig.type||'expense') === 'saved') { openAddSheet(orig); return; }
+  const entry = { ...orig, id: uid(), date: todayStr(), createdAt: Date.now(), recurring_id: null };
+  addRec(entry);
+  queueOp({ op:'upsert', sheet:'Expenses', row: prepareForSync(entry) });
+  buildMonthSels(); renderDash(); renderHist();
+  showToast(`+$${orig.amount.toFixed(2)} logged`, 'success');
+}
+
+// ── ROTH DEDUP FIX ────────────────────────────────────────────────
+function findRothIssues() {
+  return load().filter(e =>
+    e.id && (/^rec-roth-\d{4}-\d{2}$/.test(e.id) ||
+             (/^rec-roth-deposit-\d{4}-\d{2}$/.test(e.id) && Math.abs(e.amount - 538.33) < 0.10))
+  );
+}
+
+function fixRothIssues() {
+  const issues = findRothIssues();
+  if (issues.length === 0) return;
+  issues.forEach(rec => {
+    const ym = rec.date.slice(0,7);
+    const hasManual = load().some(e =>
+      e.id !== rec.id && !e.id.startsWith('rec-') &&
+      e.date.startsWith(ym) && e.type === 'saved' &&
+      (getCats(e).includes('Roth IRA') || e.account === 'vanguard-roth')
+    );
+    if (hasManual) {
+      markDelRec(rec.id);
+      queueOp({ op:'delete', id: rec.id });
+      delRec(rec.id);
+    } else {
+      const all = load();
+      const i = all.findIndex(e => e.id === rec.id);
+      if (i >= 0) { all[i] = { ...all[i], amount: 583.33 }; save(all); queueOp({ op:'upsert', sheet:'Expenses', row: prepareForSync(all[i]) }); }
+    }
+  });
+  buildMonthSels(); renderDash(); renderHist();
+  showToast(`Fixed ${issues.length} Roth entr${issues.length===1?'y':'ies'}`, 'success');
 }
 
 // ── TX ROW ────────────────────────────────────────────────────────
@@ -1700,6 +1791,18 @@ function renderInsights(exps, total, ct) {
       } else {
         notes.push({ type:'info', text: t.text });
       }
+    }
+  }
+
+  // (b) Roth dedup fix
+  if (notes.length < 3) {
+    const rothIssues = findRothIssues();
+    if (rothIssues.length > 0) {
+      notes.push({
+        type: 'flag',
+        text: `${rothIssues.length} Roth recurring entr${rothIssues.length===1?'y':'ies'} at wrong $538.33 found.`,
+        actions: [{ label:'Fix', fn:'fixRothIssues()', primary:true }]
+      });
     }
   }
 
