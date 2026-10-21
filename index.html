@@ -580,9 +580,12 @@ body{
       </div>
       <div class="btn-row">
         <button class="exp-btn" onclick="doExportXLSX()">⬇ Excel (.xlsx)</button>
-        <button class="sec-btn" onclick="doExportCSV()">⬇ Download CSV</button>
+        <button class="sec-btn" onclick="doExportCSV()">⬇ Expenses CSV</button>
       </div>
-      <p class="exp-note">Excel download works in a real browser tab. CSV downloads directly on Android Chrome.</p>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="sec-btn" style="flex:1" onclick="doExportBalancesCSV()">⬇ Balances CSV</button>
+      </div>
+      <p class="exp-note">CSV files include UTF-8 BOM so Excel opens them correctly. Excel download works in a real browser tab.</p>
       <textarea class="csv-area" id="csvArea" readonly></textarea>
       <button class="copy-btn" id="copyBtn" onclick="copyCSV()">📋 Copy to Clipboard</button>
     </div>
@@ -1325,6 +1328,13 @@ function confirmFiTarget() {
   if (banner) banner.hidden = true;
 }
 
+function markReviewed() {
+  CONFIG.lastReviewedAt = todayStr();
+  queueOp({ op:'config_set', sheet:'Config', key:'lastReviewedAt', value: todayStr() });
+  renderDash();
+  showToast('Marked as reviewed today', 'success');
+}
+
 // ── REPEAT CHIPS ──────────────────────────────────────────────────
 function getRepeatTemplates() {
   const data = load().sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
@@ -1701,14 +1711,14 @@ function doExportXLSX() {
 
 function doExportCSV() {
   const exps = expFiltered();
-  const csv = ['Date,Month,Categories,Amount,Freq,Type,Reimbursable,Status,Note',
-    ...exps.map(e=>`${e.date},${e.date.slice(0,7)},"${getCats(e).join('; ')}",${e.amount},${e.freq||'monthly'},${e.type||'expense'},${e.reimbursable||false},${e.reimb_status||'pending'},"${(e.note||'').replace(/"/g,'""')}"`)
+  const csv = ['Date,Month,Categories,Amount,Freq,Type,Reimbursable,Status,Note,Account',
+    ...exps.map(e=>`${e.date},${e.date.slice(0,7)},"${getCats(e).join('; ')}",${e.amount},${e.freq||'monthly'},${e.type||'expense'},${e.reimbursable||false},${e.reimb_status||'pending'},"${(e.note||'').replace(/"/g,'""')}","${(e.account||'').replace(/"/g,'""')}"`)
   ].join('\n');
 
-  // Blob download — works on Android Chrome and desktop
+  // UTF-8 BOM ensures Excel opens the file correctly
   try {
     const s=document.getElementById('expStart').value, e2=document.getElementById('expEnd').value;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `Headroom_${s}_${e2}.csv`;
@@ -1722,6 +1732,26 @@ function doExportCSV() {
   area.value = csv || 'No data in range.';
   area.style.display='block';
   document.getElementById('copyBtn').style.display='block';
+}
+
+function doExportBalancesCSV() {
+  if (BALANCES.length === 0) { showToast('No balances loaded — sync first'); return; }
+  const csv = ['Id,Name,Kind,Balance,APY,Shares,Strike,Cliff,AsOf',
+    ...BALANCES.map(b=>`"${b.id}","${b.name}","${b.kind}",${b.balance!=null?+b.balance:''},${b.apy||''},${b.shares||''},${b.strike||''},"${b.cliff||''}","${b.asOf||''}"`)
+  ].join('\n');
+  try {
+    const blob = new Blob(['﻿'+csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Headroom_Balances_${todayStr()}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch {
+    const area = document.getElementById('csvArea');
+    area.value = csv;
+    area.style.display='block';
+    document.getElementById('copyBtn').style.display='block';
+  }
 }
 
 function copyCSV() {
@@ -1822,6 +1852,18 @@ function renderInsights(exps, total, ct) {
       const last = allData.reduce((m,e)=>e.date>m?e.date:m,'');
       const days = last ? Math.floor((today-new Date(last+'T12:00:00'))/86400000) : 999;
       if (days >= 14) notes.push({ type:'flag', text:`No transactions logged in ${days} day${days!==1?'s':''}. Log to keep notes accurate.` });
+    }
+  }
+
+  // (b) Stale context — lastReviewedAt > 90 days
+  if (notes.length < 3 && CONFIG.lastReviewedAt) {
+    const reviewedDays = Math.floor((today - new Date(CONFIG.lastReviewedAt)) / 86400000);
+    if (reviewedDays > 90) {
+      notes.push({
+        type: 'info',
+        text: `Config last reviewed ${reviewedDays} days ago. Verify income and balances are current.`,
+        actions: [{ label:'Mark reviewed', fn:'markReviewed()', primary:true }]
+      });
     }
   }
 
