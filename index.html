@@ -845,6 +845,10 @@ function finishInit() {
     const cc = JSON.parse(localStorage.getItem('mo_config_cache')||'{}');
     if (cc && Object.keys(cc).length) applyConfig(cc);
   } catch {}
+  try {
+    const bc = JSON.parse(localStorage.getItem('mo_balances_cache')||'[]');
+    if (Array.isArray(bc) && bc.length) applyBalances(bc);
+  } catch {}
   buildMonthSels();
   document.getElementById('monthSel').value = selMonth;
   buildHistFilters();
@@ -1385,8 +1389,8 @@ function quickLog(origId) {
 // ── ROTH DEDUP FIX ────────────────────────────────────────────────
 function findRothIssues() {
   return load().filter(e =>
-    e.id && (/^rec-roth-\d{4}-\d{2}$/.test(e.id) ||
-             (/^rec-roth-deposit-\d{4}-\d{2}$/.test(e.id) && Math.abs(e.amount - 538.33) < 0.10))
+    e.id && Math.abs(e.amount - 538.33) < 0.10 &&
+    (/^rec-roth-\d{4}-\d{2}$/.test(e.id) || /^rec-roth-deposit-\d{4}-\d{2}$/.test(e.id))
   );
 }
 
@@ -2075,7 +2079,10 @@ async function fetchFromSheet() {
       replayOutbox();
     }
     // Balances
-    if (Array.isArray(payload.balances)) applyBalances(payload.balances);
+    if (Array.isArray(payload.balances)) {
+      applyBalances(payload.balances);
+      try { localStorage.setItem('mo_balances_cache', JSON.stringify(payload.balances)); } catch {}
+    }
     // Config
     if (payload.config && typeof payload.config === 'object') {
       applyConfig(payload.config);
