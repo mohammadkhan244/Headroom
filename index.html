@@ -268,6 +268,40 @@ body{
 .bal-excluded-toggle{background:none;border:none;color:var(--fg2);font-size:12px;cursor:pointer;padding:8px 0;width:100%;text-align:left;font-family:inherit}
 .stale-badge{font-size:10px;background:var(--red-bg);color:var(--red);border-radius:4px;padding:2px 5px;margin-left:6px;font-weight:600;vertical-align:middle}
 
+/* Balances tab */
+.bal-checkin{background:var(--accent-bg);border:1px solid rgba(224,140,20,.35);border-radius:var(--r);padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+.bal-checkin-btn{background:var(--accent);color:#000;border:none;padding:6px 13px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
+.bal-tab-grp{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden}
+.bal-tab-grp-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:var(--surface2);border-bottom:1px solid var(--border);gap:8px}
+.bal-tab-grp-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--fg2)}
+.bal-tab-grp-sub{font-size:11px;color:var(--fg2)}
+.bal-tab-grp-tot{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--fg);flex-shrink:0}
+.bal-tab-rows{padding:0 14px}
+.bal-tab-row{position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
+.bal-tab-row:last-child{border-bottom:none}
+.bal-tab-inner{display:flex;align-items:center;gap:10px;padding:10px 0;background:var(--surface);transition:transform .2s ease;position:relative;z-index:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.bal-tab-info{flex:1;min-width:0}
+.bal-tab-name{font-size:13px;font-weight:600;color:var(--fg)}
+.bal-tab-sub{font-size:11px;color:var(--fg2);margin-top:1px}
+.bal-tab-age{font-size:11px;color:var(--fg2);margin-top:1px}
+.bal-tab-age.amber{color:#d97706}
+.bal-tab-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--fg);text-align:right;flex-shrink:0}
+.bal-tab-spec .bal-tab-name,.bal-tab-spec .bal-tab-val{color:var(--fg2)}
+.bal-tab-del{position:absolute;right:0;top:0;bottom:0;width:72px;background:var(--red);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;z-index:0}
+.bal-tab-empty{text-align:center;padding:48px 20px;color:var(--fg2);font-size:14px}
+/* Balances form */
+.balf{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.balf-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.balf-full{margin-bottom:10px}
+.balf-spec{margin-bottom:10px}
+/* Update All card */
+.bal-ua{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:24px 16px;margin-bottom:14px;text-align:center}
+.bal-ua-prog{font-size:11px;color:var(--fg2);margin-bottom:10px}
+.bal-ua-name{font-size:16px;font-weight:700;color:var(--fg);margin-bottom:3px}
+.bal-ua-last{font-size:13px;color:var(--fg2);margin-bottom:14px}
+.bal-ua-inp{width:100%;background:var(--surface2);border:1.5px solid var(--accent);color:var(--fg);padding:12px;border-radius:10px;font-size:20px;font-family:'JetBrains Mono',monospace;text-align:center;-webkit-appearance:none;margin-bottom:12px;box-sizing:border-box}
+.bal-ua-btns{display:flex;gap:8px;justify-content:center}
+
 /* FI target banner */
 .fi-target-banner{background:var(--accent-bg);border:1px solid rgba(224,140,20,.4);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
 .fi-target-banner button{background:var(--accent);color:#000;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
@@ -407,6 +441,7 @@ body{
   <button class="tab-btn active" data-tab="dashboard">📊 Dashboard</button>
   <button class="tab-btn" data-tab="add">➕ Add</button>
   <button class="tab-btn" data-tab="history">📋 History</button>
+  <button class="tab-btn" data-tab="balances">💰 Balances</button>
   <button class="tab-btn" data-tab="export">📤 Export</button>
   <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
 </nav>
@@ -596,6 +631,11 @@ body{
     </div>
   </section>
 
+  <!-- BALANCES TAB -->
+  <section class="tab-pane" id="tab-balances">
+    <div style="padding:16px 0" id="balTab"></div>
+  </section>
+
 </main>
 
 <!-- BOTTOM NAV (mobile) -->
@@ -608,6 +648,9 @@ body{
   </button>
   <button class="bn-item bn-add" onclick="openAddSheet()">
     <span class="bn-icon">➕</span><span>Add</span>
+  </button>
+  <button class="bn-item" data-tab="balances" onclick="switchTab('balances')">
+    <span class="bn-icon">💰</span><span>Balances</span>
   </button>
   <button class="bn-item" data-tab="export" onclick="switchTab('export')">
     <span class="bn-icon">📤</span><span>Export</span>
@@ -672,7 +715,7 @@ body{
 
 <script>
 // ── CONSTANTS / SETTINGS ─────────────────────────────────────────
-const APP_VERSION    = '2026-10-20';
+const APP_VERSION    = '2026-10-21';
 const SCHEMA_VERSION = 3;
 
 function migrateData(data) {
@@ -855,6 +898,7 @@ function finishInit() {
 
   renderDash();
   renderHist();
+  renderBalancesTab();
 
   document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   document.getElementById('monthSel').addEventListener('change', e => { selMonth = e.target.value; renderDash(); });
@@ -885,6 +929,7 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id===`tab-${tab}`));
   document.querySelectorAll('.bn-item[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab===tab));
   if (tab==='history') renderHist();
+  if (tab==='balances') renderBalancesTab();
   if (tab==='export') buildExpSels();
   if (tab==='settings') renderSettings();
 }
@@ -1308,6 +1353,86 @@ function renderBalances() {
   card.innerHTML = html;
 }
 
+// ── BALANCES TAB ──────────────────────────────────────────────────
+function daysSince(dateStr) {
+  if (!dateStr) return null;
+  return Math.floor((Date.now() - new Date(dateStr + 'T12:00:00').getTime()) / 86400000);
+}
+
+function renderBalancesTab() {
+  const el = document.getElementById('balTab');
+  if (!el) return;
+  // Don't overwrite if Update All is in progress
+  if (el.querySelector('.bal-ua')) return;
+
+  const staleThresh = 45;
+  const nonSpec = BALANCES.filter(b => b.kind !== 'speculative');
+  const maxDays = nonSpec.reduce((m, b) => { const d = daysSince(b.asOf); return d != null && d > m ? d : m; }, 0);
+  let html = '';
+  if (nonSpec.length && maxDays >= staleThresh) {
+    html += `<div class="bal-checkin"><span>Time for a check-in. Last updated ${maxDays} days ago.</span><button class="bal-checkin-btn" onclick="startUpdateAll()">Update all</button></div>`;
+  }
+
+  if (!BALANCES.length) {
+    html += `<div class="bal-tab-empty"><div style="font-size:32px;margin-bottom:8px">🏦</div><div>Add your accounts to start.</div><button class="submit-btn" style="margin-top:14px;max-width:180px;display:block;margin-left:auto;margin-right:auto" onclick="openBalForm()">Add account</button></div>`;
+    el.innerHTML = html;
+    return;
+  }
+
+  const groups = { liquid:[], invested:[], speculative:[], excluded:[] };
+  BALANCES.forEach(b => { if (groups[b.kind]) groups[b.kind].push(b); });
+
+  function fmtVal(b) {
+    if (b.kind === 'speculative') {
+      const v = (+(b.shares||0)) * (+(b.strike||0));
+      return v > 0 ? `$${Math.round(v).toLocaleString()} cost` : '—';
+    }
+    return b.balance != null ? `$${(+b.balance).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+  }
+
+  function ageHtml(b) {
+    const d = daysSince(b.asOf);
+    if (d === null) return '';
+    const txt = d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+    const cls = d >= staleThresh ? ' amber' : '';
+    return `<div class="bal-tab-age${cls}">Updated ${txt}</div>`;
+  }
+
+  function rowHtml(b) {
+    const specCls = b.kind === 'speculative' ? ' bal-tab-spec' : '';
+    const sub = b.kind === 'speculative'
+      ? `${b.shares||0} shares × $${b.strike||0} strike${b.cliff ? ` · cliff ${b.cliff}` : ''}`
+      : b.apy ? `${b.apy}% APY` : '';
+    return `<div class="bal-tab-row" data-bid="${b.id}">
+      <div class="bal-tab-inner${specCls}" onclick="openBalForm('${b.id}')">
+        <div class="bal-tab-info"><div class="bal-tab-name">${b.name}</div>${sub?`<div class="bal-tab-sub">${sub}</div>`:''}${ageHtml(b)}</div>
+        <div class="bal-tab-val">${fmtVal(b)}</div>
+      </div>
+      <button class="bal-tab-del" onclick="deleteBalRow('${b.id}')">Delete</button>
+    </div>`;
+  }
+
+  function grpHtml(items, label, subtitle, collapse=false) {
+    if (!items.length) return '';
+    const tot = items.filter(b=>b.kind!=='speculative').reduce((s,b)=>s+(+b.balance||0),0);
+    const totStr = items[0].kind!=='speculative' ? `$${tot.toLocaleString(undefined,{maximumFractionDigits:0})}` : '';
+    const rows = items.map(rowHtml).join('');
+    if (collapse) {
+      return `<div class="bal-tab-grp"><div class="bal-tab-grp-hdr"><div><div class="bal-tab-grp-lbl">${label}</div>${subtitle?`<div class="bal-tab-grp-sub">${subtitle}</div>`:''}</div>${totStr?`<div class="bal-tab-grp-tot">${totStr}</div>`:''}</div><button class="bal-excluded-toggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">▶ Show</button><div class="bal-tab-rows" hidden>${rows}</div></div>`;
+    }
+    return `<div class="bal-tab-grp"><div class="bal-tab-grp-hdr"><div><div class="bal-tab-grp-lbl">${label}</div>${subtitle?`<div class="bal-tab-grp-sub">${subtitle}</div>`:''}</div>${totStr?`<div class="bal-tab-grp-tot">${totStr}</div>`:''}</div><div class="bal-tab-rows">${rows}</div></div>`;
+  }
+
+  html += grpHtml(groups.liquid,     'Liquid',       'Will count toward runway');
+  html += grpHtml(groups.invested,   'Invested',     'Not runway');
+  html += grpHtml(groups.speculative,'Speculative',  'Unvested, excluded');
+  html += grpHtml(groups.excluded,   'Excluded',     'Borrowed money, never savings', true);
+  html += `<div style="text-align:center;padding:8px 0 4px"><button class="sec-btn" onclick="openBalForm()">+ Add account</button></div>`;
+
+  el.innerHTML = html;
+  initBalSwipe();
+}
+
 function toggleBalEdit(id) {
   const row = document.getElementById(`bal-edit-${id}`);
   if (!row) return;
@@ -1330,11 +1455,206 @@ function saveBalEdit(id) {
   showToast('Balance updated');
 }
 
+let _balEditId = null;
+
+function openBalForm(id) {
+  _balEditId = id || null;
+  const b = id ? BALANCES.find(x => x.id === id) : null;
+  const isSpec = b ? b.kind === 'speculative' : false;
+  const el = document.getElementById('balTab');
+  if (!el) return;
+  const specShow = isSpec ? 'style=""' : 'style="display:none"';
+  const kindOpts = ['liquid','invested','speculative','excluded'].map(k =>
+    `<option value="${k}"${(b?b.kind:k)==='liquid'&&!b&&k==='liquid'?' selected':b&&b.kind===k?' selected':''}>${k.charAt(0).toUpperCase()+k.slice(1)}</option>`).join('');
+  const formHtml = `<div class="balf" id="balfCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:14px;font-weight:700">${b ? 'Edit account' : 'Add account'}</span>
+      <button class="bs-close" onclick="closeBalForm()" style="font-size:18px;line-height:1">✕</button>
+    </div>
+    <div class="balf-full"><label class="form-label">Name</label>
+      <input class="form-inp" id="balfName" value="${b?b.name:''}" placeholder="e.g. SoFi savings"></div>
+    <div class="balf-row">
+      <div><label class="form-label">Type</label>
+        <select class="form-sel" id="balfKind" onchange="balfKindChange()">${kindOpts}</select></div>
+      <div id="balfBalDiv"><label class="form-label">Balance ($)</label>
+        <input class="form-inp" id="balfBal" type="number" step="0.01" value="${b&&b.balance!=null?+b.balance:''}" placeholder="0.00"></div>
+    </div>
+    <div class="balf-row">
+      <div><label class="form-label">APY % <span style="color:var(--fg2)">(optional)</span></label>
+        <input class="form-inp" id="balfApy" type="number" step="0.01" value="${b&&b.apy?b.apy:''}" placeholder="3.50"></div>
+      <div><label class="form-label">Note <span style="color:var(--fg2)">(optional)</span></label>
+        <input class="form-inp" id="balfNote" value="${b&&b.note?b.note:''}" placeholder=""></div>
+    </div>
+    <div id="balfSpecFields" ${specShow}>
+      <div class="balf-row balf-spec">
+        <div><label class="form-label">Shares</label><input class="form-inp" id="balfShares" type="number" step="1" value="${b&&b.shares?b.shares:''}" placeholder="0"></div>
+        <div><label class="form-label">Strike ($)</label><input class="form-inp" id="balfStrike" type="number" step="0.01" value="${b&&b.strike?b.strike:''}" placeholder="0.00"></div>
+      </div>
+      <div class="balf-full balf-spec"><label class="form-label">Cliff date</label>
+        <input class="form-inp" id="balfCliff" type="date" value="${b&&b.cliff?b.cliff:''}"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="submit-btn" style="flex:1" onclick="saveBalForm()">Save</button>
+      ${b?`<button class="sec-btn" style="color:var(--red);border-color:var(--red)" onclick="deleteBalRow('${b.id}')">Delete</button>`:''}
+    </div>
+  </div>`;
+  el.insertAdjacentHTML('afterbegin', formHtml);
+  const nameInp = document.getElementById('balfName');
+  if (nameInp) setTimeout(() => nameInp.focus(), 80);
+}
+
+function balfKindChange() {
+  const k = document.getElementById('balfKind')?.value;
+  const spec = document.getElementById('balfSpecFields');
+  const balDiv = document.getElementById('balfBalDiv');
+  if (!spec) return;
+  spec.style.display = k === 'speculative' ? '' : 'none';
+  if (balDiv) balDiv.style.display = k === 'speculative' ? 'none' : '';
+}
+
+function closeBalForm() {
+  const c = document.getElementById('balfCard');
+  if (c) c.remove();
+  _balEditId = null;
+}
+
+function saveBalForm() {
+  const name = (document.getElementById('balfName')?.value||'').trim();
+  const kind = document.getElementById('balfKind')?.value || 'liquid';
+  const balVal = parseFloat(document.getElementById('balfBal')?.value);
+  const apy = parseFloat(document.getElementById('balfApy')?.value) || null;
+  const note = (document.getElementById('balfNote')?.value||'').trim() || null;
+  const shares = kind === 'speculative' ? (parseInt(document.getElementById('balfShares')?.value)||null) : null;
+  const strike = kind === 'speculative' ? (parseFloat(document.getElementById('balfStrike')?.value)||null) : null;
+  const cliff = kind === 'speculative' ? (document.getElementById('balfCliff')?.value||null) : null;
+  const balance = kind === 'speculative' ? null : (isNaN(balVal) ? null : balVal);
+  if (!name) { document.getElementById('balfName').style.borderColor='var(--red)'; return; }
+  const id = _balEditId || `bal-${Date.now()}`;
+  const row = { id, name, kind, balance, apy, shares, strike, cliff, note, asOf: todayStr(), updatedAt: Date.now() };
+  const idx = BALANCES.findIndex(b => b.id === id);
+  if (idx >= 0) BALANCES[idx] = row; else BALANCES.push(row);
+  try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+  queueOp({ op:'upsert', sheet:'Balances', row });
+  flushOutbox();
+  closeBalForm();
+  renderBalancesTab();
+  renderDash();
+  showToast(idx >= 0 ? 'Account updated' : 'Account added');
+}
+
 function confirmFiTarget() {
   CONFIG.fiTargetConfirmed = true;
   queueOp({ op:'config_set', sheet:'Config', key:'fiTargetConfirmed', value: true });
   const banner = document.getElementById('fiTargetBanner');
   if (banner) banner.hidden = true;
+}
+
+function deleteBalRow(id) {
+  const b = BALANCES.find(x => x.id === id);
+  if (!b) return;
+  closeBalForm();
+  BALANCES = BALANCES.filter(x => x.id !== id);
+  try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+  queueOp({ op:'delete', sheet:'Balances', id });
+  flushOutbox();
+  renderBalancesTab();
+  renderDash();
+  showToast(`Deleted "${b.name}"`, 'success', 5000, () => {
+    BALANCES.push(b);
+    try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+    queueOp({ op:'upsert', sheet:'Balances', row: b });
+    flushOutbox();
+    renderBalancesTab(); renderDash();
+  });
+}
+
+function initBalSwipe() {
+  const el = document.getElementById('balTab');
+  if (!el) return;
+  let sx = 0, sy = 0, activeInner = null;
+  el.addEventListener('touchstart', e => {
+    const inner = e.target.closest('.bal-tab-inner');
+    if (!inner) { el.querySelectorAll('.bal-tab-inner').forEach(i => i.style.transform=''); return; }
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY; activeInner = inner;
+    el.querySelectorAll('.bal-tab-inner').forEach(i => { if (i !== inner) i.style.transform=''; });
+  }, { passive:true });
+  el.addEventListener('touchmove', e => {
+    if (!activeInner) return;
+    const dx = e.touches[0].clientX - sx, dy = Math.abs(e.touches[0].clientY - sy);
+    if (dy > 15) { activeInner = null; return; }
+    if (dx < 0) { activeInner.style.transition='none'; activeInner.style.transform=`translateX(${Math.max(dx,-80)}px)`; }
+  }, { passive:true });
+  el.addEventListener('touchend', e => {
+    if (!activeInner) return;
+    const dx = e.changedTouches[0].clientX - sx;
+    activeInner.style.transition='';
+    if (Math.abs(dx) < 8 && Math.abs(e.changedTouches[0].clientY-sy) < 15) {
+      activeInner.style.transform='';
+    } else if (dx < -50) {
+      activeInner.style.transform='translateX(-80px)';
+    } else {
+      activeInner.style.transform='';
+    }
+    activeInner = null;
+  }, { passive:true });
+}
+
+let _balUA = null;
+
+function startUpdateAll() {
+  const list = BALANCES.filter(b => b.kind !== 'speculative');
+  if (!list.length) return;
+  _balUA = { list, idx: 0 };
+  renderUpdateAllStep();
+}
+
+function renderUpdateAllStep() {
+  const el = document.getElementById('balTab');
+  if (!el || !_balUA) return;
+  const { list, idx } = _balUA;
+  if (idx >= list.length) {
+    _balUA = null;
+    renderBalancesTab();
+    showToast('Check-in complete!', 'success');
+    return;
+  }
+  const b = list[idx];
+  const last = b.balance != null ? `$${(+b.balance).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
+  el.innerHTML = `<div class="bal-ua">
+    <div class="bal-ua-prog">${idx+1} of ${list.length}</div>
+    <div class="bal-ua-name">${b.name}</div>
+    <div class="bal-ua-last">Last: ${last}${b.asOf?' · '+b.asOf:''}</div>
+    <input class="bal-ua-inp" id="uaInp" type="number" step="0.01" placeholder="${b.balance!=null?+b.balance:'0.00'}" inputmode="decimal">
+    <div class="bal-ua-btns">
+      <button class="submit-btn" style="flex:1" onclick="updateAllSave()">Next →</button>
+      <button class="sec-btn" onclick="updateAllSkip()">Skip</button>
+    </div>
+  </div>`;
+  setTimeout(() => { const inp=document.getElementById('uaInp'); if(inp){inp.focus();inp.select();} }, 80);
+}
+
+function updateAllSave() {
+  if (!_balUA) return;
+  const inp = document.getElementById('uaInp');
+  const val = parseFloat(inp?.value);
+  if (isNaN(val)) { if(inp) inp.style.borderColor='var(--red)'; return; }
+  const b = _balUA.list[_balUA.idx];
+  const idx = BALANCES.findIndex(x => x.id === b.id);
+  if (idx >= 0) {
+    BALANCES[idx] = { ...BALANCES[idx], balance: val, asOf: todayStr(), updatedAt: Date.now() };
+    try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+    queueOp({ op:'upsert', sheet:'Balances', row: BALANCES[idx] });
+    flushOutbox();
+    _balUA.list[_balUA.idx] = BALANCES[idx];
+  }
+  _balUA.idx++;
+  renderUpdateAllStep();
+}
+
+function updateAllSkip() {
+  if (!_balUA) return;
+  _balUA.idx++;
+  renderUpdateAllStep();
 }
 
 function markReviewed() {
@@ -1730,9 +2050,7 @@ function doExportXLSX() {
   const snap=[
     {Metric:'Annual Gross',Value:ANNUAL_GROSS},{Metric:'Annual Net',Value:ANNUAL_NET},
     {Metric:'Monthly Net',Value:NET_MONTHLY},{Metric:'FI Target',Value:FI_TARGET},
-    {Metric:'Buffer',Value:NET_MONTHLY-FI_TARGET},{Metric:'New Hire ISOs',Value:900},
-    {Metric:'Promotion ISOs',Value:1483},{Metric:'Exercise Price',Value:3.79},
-    {Metric:'Est @ $60/sh',Value:133797},{Metric:'Est @ $120/sh',Value:276195}
+    {Metric:'Buffer',Value:NET_MONTHLY-FI_TARGET}
   ];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(snap),'FI Snapshot');
   try {
@@ -2088,7 +2406,7 @@ async function fetchFromSheet() {
       applyConfig(payload.config);
       try { localStorage.setItem('mo_config_cache', JSON.stringify(payload.config)); } catch {}
     }
-    buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
+    buildMonthSels(); buildHistFilters(); renderDash(); renderHist(); renderBalancesTab();
     try { localStorage.setItem('mo_last_sync', new Date().toISOString()); } catch {}
     const q = getOutbox().length;
     setSyncState(q ? 'queued' : 'idle', q);
