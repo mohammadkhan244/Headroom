@@ -1338,14 +1338,14 @@ function renderBalances() {
   let html = `<div class="balances-head"><span class="sec-title">Balances</span><span style="font-size:11px;color:var(--fg2)">Tap to edit</span></div>`;
   if (groups.liquid.length) {
     const tot = groups.liquid.reduce((s,b)=>s+(+b.balance||0),0);
-    html += `<div class="bal-group"><div class="bal-group-hdr">Liquid &nbsp;·&nbsp; Runway ($${tot.toLocaleString(undefined,{maximumFractionDigits:0})})</div>${groups.liquid.map(balRow).join('')}</div>`;
+    html += `<div class="bal-group"><div class="bal-group-hdr">Cash & Savings &nbsp;·&nbsp; $${tot.toLocaleString(undefined,{maximumFractionDigits:0})}</div>${groups.liquid.map(balRow).join('')}</div>`;
   }
   if (groups.invested.length) {
     const tot = groups.invested.reduce((s,b)=>s+(+b.balance||0),0);
-    html += `<div class="bal-group"><div class="bal-group-hdr">Invested &nbsp;·&nbsp; Not runway ($${tot.toLocaleString(undefined,{maximumFractionDigits:0})})</div>${groups.invested.map(balRow).join('')}</div>`;
+    html += `<div class="bal-group"><div class="bal-group-hdr">Investments &nbsp;·&nbsp; $${tot.toLocaleString(undefined,{maximumFractionDigits:0})}</div>${groups.invested.map(balRow).join('')}</div>`;
   }
   if (groups.speculative.length) {
-    html += `<div class="bal-group"><div class="bal-group-hdr">Speculative &nbsp;·&nbsp; Unvested, pre-tax est.</div>${groups.speculative.map(specRow).join('')}</div>`;
+    html += `<div class="bal-group"><div class="bal-group-hdr">Stock Options / Equity &nbsp;·&nbsp; Unvested</div>${groups.speculative.map(specRow).join('')}</div>`;
   }
   if (groups.excluded.length) {
     html += `<div class="bal-group"><button class="bal-excluded-toggle" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden;this.textContent=this.nextElementSibling.hidden?'▶ Show excluded (borrowed)':'▼ Hide excluded'">▶ Show excluded (borrowed)</button><div hidden>${groups.excluded.map(balRow).join('')}</div></div>`;
@@ -1423,10 +1423,10 @@ function renderBalancesTab() {
     return `<div class="bal-tab-grp"><div class="bal-tab-grp-hdr"><div><div class="bal-tab-grp-lbl">${label}</div>${subtitle?`<div class="bal-tab-grp-sub">${subtitle}</div>`:''}</div>${totStr?`<div class="bal-tab-grp-tot">${totStr}</div>`:''}</div><div class="bal-tab-rows">${rows}</div></div>`;
   }
 
-  html += grpHtml(groups.liquid,     'Liquid',       'Will count toward runway');
-  html += grpHtml(groups.invested,   'Invested',     'Not runway');
-  html += grpHtml(groups.speculative,'Speculative',  'Unvested, excluded');
-  html += grpHtml(groups.excluded,   'Excluded',     'Borrowed money, never savings', true);
+  html += grpHtml(groups.liquid,     'Cash & Savings',            'Counts toward runway');
+  html += grpHtml(groups.invested,   'Investments',               'Retirement, brokerage — not runway');
+  html += grpHtml(groups.speculative,'Stock Options / Equity',    'Unvested, excluded from totals');
+  html += grpHtml(groups.excluded,   'Debt & Loans',              'Borrowed money — never savings', true);
   html += `<div style="text-align:center;padding:8px 0 4px"><button class="sec-btn" onclick="openBalForm()">+ Add account</button></div>`;
 
   el.innerHTML = html;
@@ -1464,8 +1464,9 @@ function openBalForm(id) {
   const el = document.getElementById('balTab');
   if (!el) return;
   const specShow = isSpec ? 'style=""' : 'style="display:none"';
-  const kindOpts = ['liquid','invested','speculative','excluded'].map(k =>
-    `<option value="${k}"${(b?b.kind:k)==='liquid'&&!b&&k==='liquid'?' selected':b&&b.kind===k?' selected':''}>${k.charAt(0).toUpperCase()+k.slice(1)}</option>`).join('');
+  const kindLabels = { liquid:'Cash & Savings', invested:'Investments', speculative:'Stock Options / Equity', excluded:'Debt & Loans' };
+  const kindOpts = Object.keys(kindLabels).map(k =>
+    `<option value="${k}"${(!b&&k==='liquid')||(b&&b.kind===k)?' selected':''}>${kindLabels[k]}</option>`).join('');
   const formHtml = `<div class="balf" id="balfCard">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <span style="font-size:14px;font-weight:700">${b ? 'Edit account' : 'Add account'}</span>
