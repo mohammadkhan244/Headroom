@@ -318,17 +318,6 @@ body{
 .rc-amt{font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--fg)}
 .repeat-chip.saved .rc-amt{color:var(--green)}
 
-/* ── Passcode screen ────────────────────────────────── */
-.pc-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px}
-.pc-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 28px;max-width:340px;width:100%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.15)}
-.pc-logo{font-size:40px;margin-bottom:6px}
-.pc-title{font-size:20px;font-weight:700;color:var(--fg);margin-bottom:4px}
-.pc-sub{font-size:13px;color:var(--fg2);margin-bottom:20px}
-.pc-input{width:100%;background:var(--surface2);border:1.5px solid var(--border);color:var(--fg);padding:14px;border-radius:10px;font-size:22px;font-family:'JetBrains Mono',monospace;text-align:center;letter-spacing:.2em;margin-bottom:10px;-webkit-appearance:none}
-.pc-input:focus{outline:none;border-color:var(--accent)}
-.pc-input.err{border-color:var(--red)}
-.pc-btn{width:100%;background:var(--accent);color:#000;border:none;padding:14px;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
-.pc-err{color:var(--red);font-size:12px;margin-top:8px}
 
 /* ── Sync chip ──────────────────────────────────────── */
 .sync-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:.15s;user-select:none;-webkit-tap-highlight-color:transparent;flex-shrink:0}
@@ -412,18 +401,6 @@ body{
 }
 </style>
 
-<div id="pcScreen" class="pc-screen" hidden>
-  <div class="pc-card">
-    <div class="pc-logo">📈</div>
-    <div class="pc-title">Headroom</div>
-    <div class="pc-sub">Enter your passcode to continue</div>
-    <input type="password" id="pcInput" class="pc-input"
-           placeholder="••••••" autocomplete="current-password"
-           onkeydown="if(event.key==='Enter')submitPasscode()">
-    <button class="pc-btn" onclick="submitPasscode()">Unlock</button>
-    <div class="pc-err" id="pcErr" hidden>Incorrect — try again</div>
-  </div>
-</div>
 
 <header class="header">
   <div>
@@ -597,8 +574,7 @@ body{
         <button class="sec-btn" onclick="syncNow()" style="flex:1">☁ Sync now</button>
         <button class="sec-btn" onclick="clearCacheData()" style="flex:1">🗑 Clear local data</button>
       </div>
-      <button class="sec-btn" style="width:100%;margin-bottom:6px" onclick="forceRefresh()">🔄 Force Refresh</button>
-      <button class="sec-btn" style="width:100%;margin-bottom:14px;color:var(--red)" onclick="lockApp()">🔒 Lock App</button>
+      <button class="sec-btn" style="width:100%;margin-bottom:14px" onclick="forceRefresh()">🔄 Force Refresh</button>
 
       <button class="submit-btn" onclick="saveSettingsForm()">Save Settings</button>
       <button class="sec-btn" style="width:100%;margin-top:8px" onclick="resetSettings()">↩ Reset to Path Robotics Defaults</button>
@@ -877,7 +853,6 @@ function init() {
   const t = (() => { try{return localStorage.getItem('mo_theme')||'';}catch{return '';} })();
   if(t) document.documentElement.dataset.theme = t;
   updateThemeBtn();
-  if (!getPasscode()) { showPasscodeScreen(); return; }
   finishInit();
 }
 
@@ -2328,11 +2303,10 @@ async function flushOutbox() {
       const toSend = op.op === 'upsert' ? { ...op, row: prepareForSync(op.row) } : op;
       const res = await fetch(getSyncUrl(), {
         method: 'POST',
-        headers: { ...syncHeaders(), 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(toSend),
         signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
       });
-      if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
       const json = await res.json().catch(() => ({}));
       if (json.ok === true) {
         done.push(op._seq);
@@ -2383,10 +2357,8 @@ async function fetchFromSheet() {
     const ctrl = AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
     const res = await fetch(getSyncUrl() + '?sheet=all&t=' + Date.now(), {
       cache: 'no-store',
-      headers: syncHeaders(),
       ...(ctrl ? { signal: ctrl } : {})
     });
-    if (res.status === 401) { clearPasscode(); showPasscodeScreen(); return; }
     if (!res.ok) { setSyncState('error', 0, `Server returned ${res.status}`); return; }
     const payload = await res.json().catch(() => null);
     if (!payload) { setSyncState('error', 0, 'Invalid response from server'); return; }
@@ -2481,7 +2453,6 @@ async function forceRefresh() {
   if ('caches' in window) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
   location.reload(true);
 }
-function lockApp() { clearPasscode(); location.reload(); }
 
 function syncNow() {
   setSyncState('syncing');
@@ -2500,43 +2471,8 @@ function clearCacheData() {
   showToast('Local data cleared. Tap Sync now to reload from Sheet.');
 }
 
-// ── PROXY / AUTH ─────────────────────────────────────────────────
-function getSyncUrl()  { return '/api/sheet'; }
-function getPasscode() { try { return localStorage.getItem('mo_passcode')||''; } catch { return ''; } }
-function clearPasscode(){ try { localStorage.removeItem('mo_passcode'); } catch {} }
-function syncHeaders() { return { 'x-passcode': getPasscode() }; }
-
-function showPasscodeScreen() {
-  document.getElementById('pcScreen').hidden = false;
-  document.getElementById('pcErr').hidden    = true;
-  document.getElementById('pcInput').value   = '';
-  document.getElementById('pcInput').classList.remove('err');
-  setTimeout(() => document.getElementById('pcInput').focus(), 80);
-}
-function hidePasscodeScreen() { document.getElementById('pcScreen').hidden = true; }
-
-async function submitPasscode() {
-  const p = document.getElementById('pcInput').value.trim();
-  if (!p) return;
-  document.getElementById('pcErr').hidden = true;
-  document.getElementById('pcInput').classList.remove('err');
-  try {
-    const r = await fetch(getSyncUrl() + '?t=' + Date.now(), {
-      cache: 'no-store', headers: { 'x-passcode': p }
-    });
-    if (r.status === 401) {
-      document.getElementById('pcInput').classList.add('err');
-      document.getElementById('pcErr').hidden = false;
-      return;
-    }
-    try { localStorage.setItem('mo_passcode', p); } catch {}
-    hidePasscodeScreen();
-    finishInit();
-  } catch {
-    document.getElementById('pcErr').textContent = 'Cannot reach server — check connection';
-    document.getElementById('pcErr').hidden = false;
-  }
-}
+// ── PROXY ─────────────────────────────────────────────────────────
+function getSyncUrl() { return '/api/sheet'; }
 
 async function forceRefresh() {
   if ('serviceWorker' in navigator) {
@@ -2546,7 +2482,6 @@ async function forceRefresh() {
   if ('caches' in window) { const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); }
   location.reload(true);
 }
-function lockApp() { clearPasscode(); location.reload(); }
 
 // ── PWA SERVICE WORKER ────────────────────────────────────────────
 if ('serviceWorker' in navigator) {

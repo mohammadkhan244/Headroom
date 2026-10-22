@@ -1,22 +1,7 @@
-const { timingSafeEqual } = require('crypto');
-
-const { SHEETS_URL, SHEET_SECRET, APP_PASSCODE } = process.env;
+const { SHEETS_URL, SHEET_SECRET } = process.env;
 const ALLOWED_SHEETS = new Set(['Expenses', 'Balances', 'Config', 'all']);
 
-function validPasscode(req) {
-  const h = String(req.headers['x-passcode'] || '');
-  if (!APP_PASSCODE || h.length !== APP_PASSCODE.length) return false;
-  try {
-    return timingSafeEqual(Buffer.from(h), Buffer.from(APP_PASSCODE));
-  } catch { return false; }
-}
-
 module.exports = async function handler(req, res) {
-  if (!validPasscode(req)) {
-    await new Promise(r => setTimeout(r, 500));
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
   res.setHeader('Cache-Control', 'no-store');
 
   // Whitelist sheet param
