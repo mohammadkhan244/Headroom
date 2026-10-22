@@ -1,35 +1,42 @@
-// Headroom — Apps Script backend (Expenses only)
-// Setup: open this via Extensions → Apps Script inside your headroom Sheet
+// Headroom — Apps Script backend (Expenses + Balances)
+// Setup: open via Extensions → Apps Script inside your headroom Sheet
 // Script Properties → add SHEET_SECRET (same value as in Vercel)
 // Deploy → New deployment → Web app → Execute as: Me → Access: Anyone
 
-const HEADERS = ['id','date','category','categories','amount','note','freq','type',
-                 'reimbursable','reimb_status','recurring_id','account','createdAt'];
+const EXP_HEADERS = ['id','date','category','categories','amount','note','freq','type',
+                     'reimbursable','reimb_status','recurring_id','account','createdAt'];
+const BAL_HEADERS = ['id','name','kind','balance','apy','shares','strike','cliff','note','asOf','updatedAt'];
 
 const SHEET_SECRET = PropertiesService.getScriptProperties().getProperty('SHEET_SECRET');
 
 function doGet(e) {
   if ((e.parameter.secret || '') !== SHEET_SECRET) return unauthorized();
-  return ok({ ok: true, rows: sheetToRows(expenses()) });
+  // ?sheet=all → return both expenses and balances in one call
+  if (e.parameter.sheet === 'all') {
+    return ok({ ok: true, rows: sheetToRows(getSheet('Expenses', EXP_HEADERS)), balances: sheetToRows(getSheet('Balances', BAL_HEADERS)) });
+  }
+  return ok({ ok: true, rows: sheetToRows(getSheet('Expenses', EXP_HEADERS)) });
 }
 
 function doPost(e) {
   const body = JSON.parse(e.postData.contents);
   if ((body.secret || '') !== SHEET_SECRET) return unauthorized();
-  const sh = expenses();
-  if      (body.op === 'upsert') upsertRow(sh, body.row);
+  const isBalances = body.sheet === 'Balances';
+  const sh = isBalances ? getSheet('Balances', BAL_HEADERS) : getSheet('Expenses', EXP_HEADERS);
+  const hdrs = isBalances ? BAL_HEADERS : EXP_HEADERS;
+  if      (body.op === 'upsert') upsertRow(sh, hdrs, body.row);
   else if (body.op === 'delete') deleteRow(sh, body.id);
   return ok({ ok: true });
 }
 
 // ── helpers ─────────────────────────────────────────────────────────
 
-function expenses() {
+function getSheet(name, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName('Expenses') || ss.insertSheet('Expenses');
+  const sh = ss.getSheetByName(name) || ss.insertSheet(name);
   if (sh.getLastRow() === 0) {
-    sh.appendRow(HEADERS);
-    sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
+    sh.appendRow(headers);
+    sh.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   }
   return sh;
 }
@@ -37,17 +44,18 @@ function expenses() {
 function sheetToRows(sh) {
   const last = sh.getLastRow();
   if (last < 2) return [];
-  const data = sh.getRange(1, 1, last, HEADERS.length).getValues();
+  const lastCol = sh.getLastColumn();
+  const data = sh.getRange(1, 1, last, lastCol).getValues();
   const hdrs = data[0].map(h => String(h).trim());
   return data.slice(1)
     .map(row => { const o = {}; hdrs.forEach((h,i) => { o[h] = row[i] !== undefined ? row[i] : ''; }); return o; })
-    .filter(r => r.id && r.date);
+    .filter(r => r.id);
 }
 
-function upsertRow(sh, row) {
-  const hdrs = sh.getRange(1, 1, 1, HEADERS.length).getValues()[0].map(h => String(h).trim());
+function upsertRow(sh, hdrs, row) {
+  const shHdrs = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim());
   if (!row.categories && row.category) row.categories = row.category;
-  const newRow = hdrs.map(h => (row[h] !== undefined && row[h] !== null) ? row[h] : '');
+  const newRow = shHdrs.map(h => (row[h] !== undefined && row[h] !== null) ? row[h] : '');
   const idx = findRow(sh, row.id);
   if (idx > 0) sh.getRange(idx, 1, 1, newRow.length).setValues([newRow]);
   else sh.appendRow(newRow);

@@ -1449,6 +1449,8 @@ function saveBalEdit(id) {
   if (idx < 0) return;
   BALANCES[idx] = { ...BALANCES[idx], balance: val, asOf: todayStr(), updatedAt: Date.now() };
   try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+  queueOp({ op:'upsert', sheet:'Balances', row: BALANCES[idx] });
+  flushOutbox();
   const row = document.getElementById(`bal-edit-${id}`);
   if (row) row.classList.remove('open');
   renderDash();
@@ -1535,6 +1537,8 @@ function saveBalForm() {
   const idx = BALANCES.findIndex(b => b.id === id);
   if (idx >= 0) BALANCES[idx] = row; else BALANCES.push(row);
   try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+  queueOp({ op:'upsert', sheet:'Balances', row });
+  flushOutbox();
   closeBalForm();
   renderBalancesTab();
   renderDash();
@@ -1554,11 +1558,15 @@ function deleteBalRow(id) {
   closeBalForm();
   BALANCES = BALANCES.filter(x => x.id !== id);
   try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+  queueOp({ op:'delete', sheet:'Balances', id });
+  flushOutbox();
   renderBalancesTab();
   renderDash();
   showToast(`Deleted "${b.name}"`, 'success', 5000, () => {
     BALANCES.push(b);
     try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+    queueOp({ op:'upsert', sheet:'Balances', row: b });
+    flushOutbox();
     renderBalancesTab(); renderDash();
   });
 }
@@ -1638,6 +1646,8 @@ function updateAllSave() {
   if (idx >= 0) {
     BALANCES[idx] = { ...BALANCES[idx], balance: val, asOf: todayStr(), updatedAt: Date.now() };
     try { localStorage.setItem('mo_balances_cache', JSON.stringify(BALANCES)); } catch {}
+    queueOp({ op:'upsert', sheet:'Balances', row: BALANCES[idx] });
+    flushOutbox();
     _balUA.list[_balUA.idx] = BALANCES[idx];
   }
   _balUA.idx++;
@@ -2371,7 +2381,7 @@ async function fetchFromSheet() {
   setSyncState('syncing');
   try {
     const ctrl = AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined;
-    const res = await fetch(getSyncUrl() + '?t=' + Date.now(), {
+    const res = await fetch(getSyncUrl() + '?sheet=all&t=' + Date.now(), {
       cache: 'no-store',
       headers: syncHeaders(),
       ...(ctrl ? { signal: ctrl } : {})
@@ -2384,11 +2394,17 @@ async function fetchFromSheet() {
       setSyncState('error', 0, payload.error ? `Sheet error: ${payload.error}` : 'Sheet returned an error');
       return;
     }
-    // Expenses — handle both {rows:[]} (simple) and {expenses:[]} (extended) formats
+    // Expenses
     const expRows = Array.isArray(payload.expenses) ? payload.expenses : (Array.isArray(payload.rows) ? payload.rows : null);
     if (expRows) {
       save(expRows.map(normalizeExpense).filter(r => r.id && r.date));
       replayOutbox();
+    }
+    // Balances
+    if (Array.isArray(payload.balances)) {
+      applyBalances(payload.balances);
+      try { localStorage.setItem('mo_balances_cache', JSON.stringify(payload.balances)); } catch {}
+      renderBalancesTab();
     }
     buildMonthSels(); buildHistFilters(); renderDash(); renderHist(); renderBalancesTab();
     try { localStorage.setItem('mo_last_sync', new Date().toISOString()); } catch {}
