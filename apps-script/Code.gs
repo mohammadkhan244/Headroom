@@ -10,6 +10,7 @@ const BAL_HEADERS = ['id','name','kind','balance','apy','shares','strike','cliff
 const SHEET_SECRET = PropertiesService.getScriptProperties().getProperty('SHEET_SECRET');
 
 function doGet(e) {
+  if (!e || !e.parameter) return unauthorized();
   if ((e.parameter.secret || '') !== SHEET_SECRET) return unauthorized();
   // ?sheet=all → return both expenses and balances in one call
   if (e.parameter.sheet === 'all') {
@@ -19,6 +20,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  if (!e || !e.postData) return unauthorized();
   const body = JSON.parse(e.postData.contents);
   if ((body.secret || '') !== SHEET_SECRET) return unauthorized();
   const isBalances = body.sheet === 'Balances';
