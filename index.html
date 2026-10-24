@@ -1278,14 +1278,14 @@ function renderBalances() {
   const today = new Date();
   function isStale(b) {
     if (!b.asOf) return false;
-    return (today - new Date(b.asOf)) / 86400000 > 30;
+    return (today - new Date(String(b.asOf).slice(0,10)+'T12:00:00')) / 86400000 > 30;
   }
   function fmtBal(b) {
     return b.balance != null ? `$${(+b.balance).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—';
   }
   function balRow(b) {
     const stale = isStale(b) ? `<span class="stale-badge">stale</span>` : '';
-    const asOfStr = b.asOf ? new Date(b.asOf+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
+    const asOfStr = b.asOf ? new Date(String(b.asOf).slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
     const sub = b.apy ? `${b.apy}% APY` : (asOfStr ? `as of ${asOfStr}` : '');
     return `<div class="bal-item" onclick="toggleBalEdit('${b.id}')">
       <div style="flex:1;min-width:0">
@@ -1333,7 +1333,9 @@ function renderBalances() {
 // ── BALANCES TAB ──────────────────────────────────────────────────
 function daysSince(dateStr) {
   if (!dateStr) return null;
-  return Math.floor((Date.now() - new Date(dateStr + 'T12:00:00').getTime()) / 86400000);
+  const ms = new Date(String(dateStr).slice(0, 10) + 'T12:00:00').getTime();
+  if (isNaN(ms)) return null;
+  return Math.floor((Date.now() - ms) / 86400000);
 }
 
 function renderBalancesTab() {
@@ -1435,6 +1437,7 @@ function saveBalEdit(id) {
 }
 
 let _balEditId = null;
+let _balSaving = false;
 
 function openBalForm(id) {
   _balEditId = id || null;
@@ -1499,6 +1502,8 @@ function closeBalForm() {
 }
 
 function saveBalForm() {
+  if (_balSaving) return;
+  _balSaving = true;
   const name = (document.getElementById('balfName')?.value||'').trim();
   const kind = document.getElementById('balfKind')?.value || 'liquid';
   const balVal = parseFloat(document.getElementById('balfBal')?.value);
@@ -1508,8 +1513,13 @@ function saveBalForm() {
   const strike = kind === 'speculative' ? (parseFloat(document.getElementById('balfStrike')?.value)||null) : null;
   const cliff = kind === 'speculative' ? (document.getElementById('balfCliff')?.value||null) : null;
   const balance = kind === 'speculative' ? null : (isNaN(balVal) ? null : balVal);
-  if (!name) { document.getElementById('balfName').style.borderColor='var(--red)'; return; }
-  const id = _balEditId || `bal-${Date.now()}`;
+  if (!name) { document.getElementById('balfName').style.borderColor='var(--red)'; _balSaving = false; return; }
+  // For new entries, reuse existing id if same name already exists (prevents accidental duplicates)
+  let id = _balEditId;
+  if (!id) {
+    const existing = BALANCES.find(b => b.name.trim().toLowerCase() === name.toLowerCase());
+    id = existing ? existing.id : `bal-${Date.now()}`;
+  }
   const row = { id, name, kind, balance, apy, shares, strike, cliff, note, asOf: todayStr(), updatedAt: Date.now() };
   const idx = BALANCES.findIndex(b => b.id === id);
   if (idx >= 0) BALANCES[idx] = row; else BALANCES.push(row);
@@ -1517,6 +1527,7 @@ function saveBalForm() {
   queueOp({ op:'upsert', sheet:'Balances', row });
   flushOutbox();
   closeBalForm();
+  _balSaving = false;
   renderBalancesTab();
   renderDash();
   showToast(idx >= 0 ? 'Account updated' : 'Account added');
@@ -2163,7 +2174,7 @@ function renderInsights(exps, total, ct) {
     } else {
       const stale = BALANCES
         .filter(b=>b.kind!=='speculative'&&b.asOf)
-        .map(b=>({name:b.name, days:Math.floor((today-new Date(b.asOf+'T12:00:00'))/86400000)}))
+        .map(b=>({name:b.name, days:Math.floor((today-new Date(String(b.asOf).slice(0,10)+'T12:00:00'))/86400000)}))
         .filter(b=>b.days>45).sort((a,b)=>b.days-a.days);
       if (stale.length) {
         notes.push({type:'flag', text:`${stale[0].name} last updated ${stale[0].days} days ago. Update it.`});
