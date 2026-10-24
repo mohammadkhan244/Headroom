@@ -2094,125 +2094,112 @@ function copyCSV() {
 }
 
 
-// ── INSIGHTS (FLOATER — max 3, each cites one number, names one action) ───────
+// ── INSIGHTS ──────────────────────────────────────────────────────
+function _dupNote(allData) {
+  const byTM = {};
+  for (const e of allData) {
+    if (!e.date || !e.amount) continue;
+    const key = `${e.type||'expense'}_${e.date.slice(0,7)}`;
+    (byTM[key] = byTM[key]||[]).push(e);
+  }
+  for (const [key, grp] of Object.entries(byTM)) {
+    for (let i = 0; i < grp.length-1; i++) {
+      for (let j = i+1; j < grp.length; j++) {
+        const a = grp[i], b = grp[j];
+        const mx = Math.max(a.amount, b.amount);
+        if (!mx || Math.abs(a.amount-b.amount)/mx > 0.15) continue;
+        const sameCat  = getCats(a)[0] === getCats(b)[0];
+        const sameNote = a.note && b.note && a.note.trim().toLowerCase() === b.note.trim().toLowerCase();
+        if (!sameCat && !sameNote) continue;
+        const ym  = key.split('_')[1];
+        const mon = new Date(ym+'-01T12:00:00').toLocaleString('default',{month:'short'});
+        const lbl = (a.type||'expense')==='saved' ? 'Savings' : getCats(a)[0];
+        return `Two similar entries in ${mon}: ${lbl} $${Math.round(a.amount).toLocaleString()} and ${lbl} $${Math.round(b.amount).toLocaleString()}. Delete one.`;
+      }
+    }
+  }
+  return null;
+}
+
+function _lowSavNote(allData, today) {
+  const ym0    = today.toISOString().slice(0,7);
+  const sumSav = ym => allData.filter(e=>e.type==='saved'&&e.date&&e.date.slice(0,7)===ym).reduce((s,e)=>s+e.amount,0);
+  const cur    = sumSav(ym0);
+  const prev   = [];
+  for (let i=1; i<=6 && prev.length<3; i++) {
+    const d = new Date(today); d.setMonth(d.getMonth()-i);
+    const v = sumSav(d.toISOString().slice(0,7));
+    if (v>0) prev.push(v);
+  }
+  if (!prev.length) return null;
+  const avg = prev.reduce((s,v)=>s+v,0)/prev.length;
+  if (!avg || cur >= avg*0.8) return null;
+  return `Only $${Math.round(cur).toLocaleString()} of ~$${Math.round(avg).toLocaleString()} usual savings logged this month. Log the rest.`;
+}
+
 function renderInsights(exps, total, ct) {
-  const notes = [];
-  const today = new Date();
-  const liquidBal  = BALANCES.filter(b=>b.kind==='liquid').reduce((s,b)=>s+(+b.balance||0),0);
-  const runwayMos  = FI_TARGET > 0 ? liquidBal / FI_TARGET : 0;
-  const milestones = Array.isArray(CONFIG.milestones) ? CONFIG.milestones : [3,6];
-  const m3 = milestones[0]||3;
-  const savedAmt   = exps.filter(e=>e.type==='saved').reduce((s,e)=>s+e.amount,0);
-  const spentAll   = exps.filter(e=>(e.type||'expense')==='expense').reduce((s,e)=>s+e.amount,0);
-  const leftInCash = NET_MONTHLY - spentAll - savedAmt;
+  const notes   = [];
+  const today   = new Date();
+  const allData = load();
+  const liqBal  = BALANCES.filter(b=>b.kind==='liquid').reduce((s,b)=>s+(+b.balance||0),0);
+  const runway  = FI_TARGET>0 ? liqBal/FI_TARGET : 0;
+  const fmt     = n => Math.round(n).toLocaleString();
 
-  // (a) Grow liquid runway — m1Redirect pending
-  if (CONFIG.m1Redirect === 'pending') {
-    const sofiApy  = (+((BALANCES.find(b=>b.id==='sofi-savings')||{}).apy)||3.30);
-    const m1Dep    = +((RECURRING_LIST.find(r=>r.id==='m1-deposit')||{}).amount||700);
-    const annInt   = Math.round(m1Dep * 6.5 * sofiApy / 100);
-    notes.push({
-      type: 'action',
-      text: `$${m1Dep.toLocaleString()}/mo goes to M1 cash (0% APY). Moving it to SoFi (${sofiApy}% APY) earns ~$${annInt}/yr in interest — same liquid total, more productive.`,
-      actions: [
-        { label:'Accept', fn:'acceptM1Redirect()', primary:true },
-        { label:'Decline', fn:'declineM1Redirect()', primary:false }
-      ]
-    });
+  // (a) Grow runway
+  if (FI_TARGET>0 && BALANCES.length>0) {
+    const ms = runway<3 ? 3 : runway<6 ? 6 : 0;
+    if (ms) {
+      const gap     = Math.max(0, ms*FI_TARGET - liqBal);
+      const monthly = Math.ceil(gap/6/10)*10;
+      notes.push({type:'warn', text:`Runway is ${runway.toFixed(1)} months. $${fmt(gap)} short of ${ms} months. Save about $${fmt(monthly)}/mo to get there in 6 months.`});
+    }
   }
 
-  // (a) Runway below 3-month milestone
-  if (BALANCES.length > 0 && runwayMos < m3) {
-    const gap = Math.max(0, m3 * FI_TARGET - liquidBal);
-    notes.push({
-      type: 'warn',
-      text: `Runway is ${runwayMos.toFixed(1)} months. $${gap.toLocaleString(undefined,{maximumFractionDigits:0})} short of ${m3}-month goal — prioritize liquid savings.`
-    });
-  }
-
-  // (a) Undeployed cash (leftInCash)
-  if (notes.length < 3 && leftInCash > 300 && BALANCES.length > 0) {
-    const dest = BALANCES.find(b=>b.id==='sofi-savings') ? 'SoFi savings' : 'liquid savings';
-    notes.push({
-      type: 'info',
-      text: `$${Math.round(leftInCash).toLocaleString()} sits undeployed in cash this month. Move it to ${dest} to grow runway.`
-    });
-  }
-
-  // (b) Open tasks
-  if (notes.length < 3) {
-    const openTasks = Array.isArray(CONFIG.tasks) ? CONFIG.tasks.filter(t=>!t.done) : [];
-    for (const t of openTasks) {
-      if (notes.length >= 3) break;
-      if (t.id === 'battelle-rollover') {
-        const bb = BALANCES.find(b=>b.id==='battelle-plan');
-        const amt = bb ? `$${Math.round(+bb.balance).toLocaleString()}` : '';
-        notes.push({ type:'warn', text:`${amt?amt+' sits':'Money sits'} in the old-employer plan. ${t.text}.` });
+  // (b) Data issues — at most one, first that applies
+  if (notes.length<3) {
+    const liqAccts = BALANCES.filter(b=>b.kind==='liquid');
+    if (BALANCES.length===0 || liqAccts.length===0) {
+      notes.push({type:'flag', text:'No liquid accounts yet. Add your cash accounts in Balances.'});
+    } else {
+      const stale = BALANCES
+        .filter(b=>b.kind!=='speculative'&&b.asOf)
+        .map(b=>({name:b.name, days:Math.floor((today-new Date(b.asOf+'T12:00:00'))/86400000)}))
+        .filter(b=>b.days>45).sort((a,b)=>b.days-a.days);
+      if (stale.length) {
+        notes.push({type:'flag', text:`${stale[0].name} last updated ${stale[0].days} days ago. Update it.`});
       } else {
-        notes.push({ type:'info', text: t.text });
+        const dup = _dupNote(allData);
+        if (dup) {
+          notes.push({type:'flag', text:dup});
+        } else if (allData.length>0) {
+          const last = allData.reduce((m,e)=>e.date>m?e.date:m,'');
+          const days = last ? Math.floor((today-new Date(last+'T12:00:00'))/86400000) : 999;
+          if (days>=14) {
+            notes.push({type:'flag', text:`No entries in ${days} days. Log recent spending and savings.`});
+          } else {
+            const sv = _lowSavNote(allData, today);
+            if (sv) notes.push({type:'flag', text:sv});
+          }
+        }
       }
     }
   }
 
-  // (b) Roth dedup fix
-  if (notes.length < 3) {
-    const rothIssues = findRothIssues();
-    if (rothIssues.length > 0) {
-      notes.push({
-        type: 'flag',
-        text: `${rothIssues.length} Roth recurring entr${rothIssues.length===1?'y':'ies'} at wrong $538.33 found.`,
-        actions: [{ label:'Fix', fn:'fixRothIssues()', primary:true }]
-      });
-    }
-  }
-
-  // (b) Stale balances
-  if (notes.length < 3) {
-    const stale = BALANCES.filter(b=>b.kind!=='speculative' && b.asOf && (today-new Date(b.asOf))/86400000 > 30);
-    if (stale.length > 0) {
-      const names = stale.slice(0,2).map(b=>b.name).join(', ');
-      notes.push({ type:'flag', text:`${stale.length} balance${stale.length>1?'s':''} stale >30 days: ${names}. Update for accurate runway.` });
-    }
-  }
-
-  // (b) No entries in 14 days
-  if (notes.length < 3) {
-    const allData = load();
-    if (allData.length > 0) {
-      const last = allData.reduce((m,e)=>e.date>m?e.date:m,'');
-      const days = last ? Math.floor((today-new Date(last+'T12:00:00'))/86400000) : 999;
-      if (days >= 14) notes.push({ type:'flag', text:`No transactions logged in ${days} day${days!==1?'s':''}. Log to keep notes accurate.` });
-    }
-  }
-
-  // (b) Stale context — lastReviewedAt > 90 days
-  if (notes.length < 3 && CONFIG.lastReviewedAt) {
-    const reviewedDays = Math.floor((today - new Date(CONFIG.lastReviewedAt)) / 86400000);
-    if (reviewedDays > 90) {
-      notes.push({
-        type: 'info',
-        text: `Config last reviewed ${reviewedDays} days ago. Verify income and balances are current.`,
-        actions: [{ label:'Mark reviewed', fn:'markReviewed()', primary:true }]
-      });
-    }
-  }
-
-  // Fallback
-  if (notes.length === 0) {
-    const list = document.getElementById('insightsList');
-    if (list) list.innerHTML = '<div class="insight-item"><div class="insight-dot good"></div><div class="insight-body">Runway ≥ 3 months and no open issues — looking good.</div></div>';
-    return;
+  // (c) Long-term — only when runway ≥ 3 months
+  if (notes.length<3 && FI_TARGET>0 && runway>=3) {
+    const gap6 = Math.max(0, 6*FI_TARGET - liqBal);
+    if (gap6>0) notes.push({type:'info', text:`Runway hit 3 months. Decide where new savings go next: 6 months needs $${fmt(gap6)} more.`});
   }
 
   const list = document.getElementById('insightsList');
   if (!list) return;
-  list.innerHTML = notes.slice(0,3).map(n => {
-    const dot = n.type==='action'?'info':n.type;
-    const btns = n.actions
-      ? `<div class="insight-actions">${n.actions.map(a=>`<button class="insight-btn${a.primary?' primary':''}" onclick="${a.fn}">${a.label}</button>`).join('')}</div>`
-      : '';
-    return `<div class="insight-item"><div class="insight-dot ${dot}"></div><div class="insight-body">${n.text}${btns}</div></div>`;
-  }).join('');
+  if (!notes.length) {
+    list.innerHTML = '<div class="insight-item"><div class="insight-dot good"></div><div class="insight-body">No action needed.</div></div>';
+    return;
+  }
+  list.innerHTML = notes.slice(0,3).map(n=>
+    `<div class="insight-item"><div class="insight-dot ${n.type}"></div><div class="insight-body">${n.text}</div></div>`
+  ).join('');
 }
 
 function acceptM1Redirect() {
