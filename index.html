@@ -568,6 +568,8 @@ body{
         <div class="sett-info-row"><span>App version</span><span id="settVer">—</span></div>
         <div class="sett-info-row"><span>Last sync</span><span id="settSync">—</span></div>
         <div class="sett-info-row"><span>Rows</span><span id="settRows">—</span></div>
+        <div class="sett-info-row"><span>Queued ops</span><span id="settQ">—</span></div>
+        <div class="sett-info-row"><span>Last error</span><span id="settErr" style="color:var(--red);max-width:180px;text-align:right;word-break:break-word">—</span></div>
       </div>
       <button class="sec-btn" style="width:100%;margin-bottom:8px" onclick="forceRefresh()">🔄 Force Refresh</button>
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
@@ -2248,6 +2250,19 @@ function renderSettings() {
   const ls = (() => { try { return localStorage.getItem('mo_last_sync')||''; } catch { return ''; } })();
   document.getElementById('settSync').textContent = ls ? new Date(ls).toLocaleString() : 'Never';
   document.getElementById('settRows').textContent = load().length + ' rows';
+  document.getElementById('settQ').textContent    = getOutbox().length + ' ops';
+  const le = (() => { try { return JSON.parse(localStorage.getItem('mo_last_error')||'null'); } catch { return null; } })();
+  if (le) {
+    let msg = le.error || 'unknown';
+    if (le.upstreamStatus) msg += ` (HTTP ${le.upstreamStatus})`;
+    if (le.snippet)        msg += ` · ${le.snippet}`;
+    if (le.at)             msg += ` @ ${new Date(le.at).toLocaleTimeString()}`;
+    document.getElementById('settErr').textContent = msg;
+    document.getElementById('settErr').style.color = 'var(--red)';
+  } else {
+    document.getElementById('settErr').textContent = '—';
+    document.getElementById('settErr').style.color = '';
+  }
 }
 
 function saveSettingsForm() {
@@ -2359,7 +2374,13 @@ async function fetchFromSheet() {
       cache: 'no-store',
       ...(ctrl ? { signal: ctrl } : {})
     });
-    if (!res.ok) { setSyncState('error', 0, `Server returned ${res.status}`); return; }
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      try { localStorage.setItem('mo_last_error', JSON.stringify({ ...errBody, at: new Date().toISOString() })); } catch {}
+      const msg = errBody.error || `Server returned ${res.status}`;
+      setSyncState('error', 0, msg);
+      return;
+    }
     const payload = await res.json().catch(() => null);
     if (!payload) { setSyncState('error', 0, 'Invalid response from server'); return; }
     if (payload.ok !== true) {
@@ -2379,7 +2400,7 @@ async function fetchFromSheet() {
       renderBalancesTab();
     }
     buildMonthSels(); buildHistFilters(); renderDash(); renderHist(); renderBalancesTab();
-    try { localStorage.setItem('mo_last_sync', new Date().toISOString()); } catch {}
+    try { localStorage.setItem('mo_last_sync', new Date().toISOString()); localStorage.removeItem('mo_last_error'); } catch {}
     const q = getOutbox().length;
     setSyncState(q ? 'queued' : 'idle', q);
   } catch(err) {
