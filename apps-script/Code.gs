@@ -64,8 +64,17 @@ function sheetToRows(sh) {
   const lastCol = sh.getLastColumn();
   const data = sh.getRange(1, 1, last, lastCol).getValues();
   const hdrs = data[0].map(h => String(h).trim());
+  const tz = Session.getScriptTimeZone();
   return data.slice(1)
-    .map(row => { const o = {}; hdrs.forEach((h,i) => { o[h] = row[i] !== undefined ? row[i] : ''; }); return o; })
+    .map(row => {
+      const o = {};
+      hdrs.forEach((h, i) => {
+        let v = row[i] !== undefined ? row[i] : '';
+        if (v instanceof Date) v = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+        o[h] = v;
+      });
+      return o;
+    })
     .filter(r => r.id);
 }
 

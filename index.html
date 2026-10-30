@@ -735,6 +735,7 @@ function migrateData(data) {
   return data.map(e => ({
     ...e,
     categories:   Array.isArray(e.categories) && e.categories.length ? e.categories : [e.category||'Other'],
+    date:         String(e.date||'').slice(0,10),
     type:         (e.type || 'expense').toLowerCase(),
     reimbursable: e.reimbursable === true || e.reimbursable === 'TRUE',
     reimb_status: e.reimb_status || 'pending',
@@ -1226,7 +1227,7 @@ function renderDash() {
       <details style="margin-top:6px">
         <summary style="font-size:11px;color:var(--accent);cursor:pointer;list-style:none">Tap to see what's counted</summary>
         <div style="margin-top:6px;font-size:11px;color:var(--fg2);line-height:1.6">
-          ${savedItems.length ? savedItems.map(e=>`<div style="display:flex;justify-content:space-between"><span>${e.date} ${(e.note||'—').slice(0,22)}</span><span style="font-family:monospace">$${e.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`).join('') : '<div>No savings entries this month.</div>'}
+          ${savedItems.length ? savedItems.map(e=>{const dl=new Date(e.date.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});return`<div style="display:flex;justify-content:space-between"><span>${dl} ${(e.note||'—').slice(0,22)}</span><span style="font-family:monospace">$${e.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`;}).join('') : '<div>No savings entries this month.</div>'}
           <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">÷ $${NET_MONTHLY?NET_MONTHLY.toLocaleString():'—'}/mo (net monthly)</div>
         </div>
       </details>
@@ -2588,7 +2589,7 @@ function normalizeExpense(row) {
     : [String(row.category||'Other')];
   return {
     id:          String(row.id||''),
-    date:        String(row.date||''),
+    date:        String(row.date||'').slice(0,10),
     categories:  cats,
     category:    cats[0]||'Other',
     amount:      parseFloat(row.amount)||0,
