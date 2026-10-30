@@ -735,7 +735,7 @@ function migrateData(data) {
   return data.map(e => ({
     ...e,
     categories:   Array.isArray(e.categories) && e.categories.length ? e.categories : [e.category||'Other'],
-    type:         e.type || 'expense',
+    type:         (e.type || 'expense').toLowerCase(),
     reimbursable: e.reimbursable === true || e.reimbursable === 'TRUE',
     reimb_status: e.reimb_status || 'pending',
     recurring_id: e.recurring_id || null,
@@ -1223,6 +1223,13 @@ function renderDash() {
       <div class="stat-label">Savings Rate</div>
       <div class="stat-value ${rateColor}">${savingsRate}%</div>
       <div class="stat-sub">$${savedAmt.toFixed(0)} saved of $${NET_MONTHLY?NET_MONTHLY.toLocaleString():'—'}/mo</div>
+      <details style="margin-top:6px">
+        <summary style="font-size:11px;color:var(--accent);cursor:pointer;list-style:none">Tap to see what's counted</summary>
+        <div style="margin-top:6px;font-size:11px;color:var(--fg2);line-height:1.6">
+          ${savedItems.length ? savedItems.map(e=>`<div style="display:flex;justify-content:space-between"><span>${e.date} ${(e.note||'—').slice(0,22)}</span><span style="font-family:monospace">$${e.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div>`).join('') : '<div>No savings entries this month.</div>'}
+          <div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--border)">÷ $${NET_MONTHLY?NET_MONTHLY.toLocaleString():'—'}/mo (net monthly)</div>
+        </div>
+      </details>
     </div>
   `;
 
@@ -1925,6 +1932,10 @@ function checkRecurring() {
 // ── RECURRING MANAGEMENT ──────────────────────────────────────────
 let _recurEditId = null;
 
+function _persistConfig() {
+  try { localStorage.setItem('mo_config_cache', JSON.stringify(CONFIG)); } catch {}
+}
+
 function renderRecurring() {
   const el = document.getElementById('settRecurringList');
   if (!el) return;
@@ -1967,6 +1978,7 @@ function addUsualFour() {
   four.forEach(t => { if (!RECURRING_LIST.find(r => r.id === t.id)) { RECURRING_LIST.push(t); added++; } });
   if (!added) { showToast('All four already exist'); return; }
   CONFIG.recurring = RECURRING_LIST;
+  _persistConfig();
   queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
   renderRecurring();
   showToast(`${added} template${added===1?'':'s'} added`);
@@ -2005,6 +2017,7 @@ function saveRecurForm() {
   const idx        = RECURRING_LIST.findIndex(r => r.id === id);
   if (idx >= 0) RECURRING_LIST[idx] = template; else RECURRING_LIST.push(template);
   CONFIG.recurring = RECURRING_LIST;
+  _persistConfig();
   queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
   closeRecurForm();
   renderRecurring();
@@ -2017,6 +2030,7 @@ function toggleRecurActive(id) {
   if (!r) return;
   r.active = r.active === false;
   CONFIG.recurring = RECURRING_LIST;
+  _persistConfig();
   queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
   renderRecurring();
   showToast(r.active ? 'Resumed' : 'Paused');
@@ -2025,6 +2039,7 @@ function toggleRecurActive(id) {
 function deleteRecurTemplate(id) {
   RECURRING_LIST = RECURRING_LIST.filter(r => r.id !== id);
   CONFIG.recurring = RECURRING_LIST;
+  _persistConfig();
   queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
   renderRecurring();
   showToast('Deleted');
@@ -2579,7 +2594,7 @@ function normalizeExpense(row) {
     amount:      parseFloat(row.amount)||0,
     note:        String(row.note||''),
     freq:        String(row.freq||'monthly'),
-    type:        String(row.type||'expense'),
+    type:        String(row.type||'expense').toLowerCase(),
     reimbursable: row.reimbursable===true || row.reimbursable==='TRUE',
     reimb_status: String(row.reimb_status||'pending'),
     recurring_id: String(row.recurring_id||'')||null,
