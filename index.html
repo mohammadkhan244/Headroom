@@ -1303,7 +1303,7 @@ function renderBalances() {
   function specRow(b) {
     const stale = isStale(b) ? `<span class="stale-badge">stale</span>` : '';
     const vals = scenarios.map(px=>`$${Math.round((+b.shares||0)*(px-(+b.strike||0))/1000)}K @ $${px}`).join(' / ');
-    const cliff = b.cliff ? new Date(b.cliff+'T12:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'}) : '';
+    const cliff = b.cliff ? new Date(b.cliff.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '';
     return `<div class="bal-item speculative">
       <div style="flex:1;min-width:0">
         <div class="bal-item-name">${b.name}${stale}</div>
@@ -1380,7 +1380,7 @@ function renderBalancesTab() {
   function rowHtml(b) {
     const specCls = b.kind === 'speculative' ? ' bal-tab-spec' : '';
     const sub = b.kind === 'speculative'
-      ? `${b.shares||0} shares × $${b.strike||0} strike${b.cliff ? ` · cliff ${b.cliff}` : ''}`
+      ? `${b.shares||0} shares × $${b.strike||0} strike${b.cliff ? ` · cliff ${new Date(b.cliff.slice(0,10)+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}` : ''}`
       : b.apy ? `${b.apy}% APY` : '';
     return `<div class="bal-tab-row" data-bid="${b.id}">
       <div class="bal-tab-inner${specCls}" onclick="openBalForm('${b.id}')">
@@ -1455,7 +1455,7 @@ function openBalForm(id) {
       <button class="bs-close" onclick="closeBalForm()" style="font-size:18px;line-height:1">✕</button>
     </div>
     <div class="balf-full"><label class="form-label">Name</label>
-      <input class="form-inp" id="balfName" value="${b?b.name:''}" placeholder="e.g. SoFi savings"></div>
+      <input class="form-inp" id="balfName" value="${b?b.name:''}" placeholder="e.g. SoFi savings" autocapitalize="off" autocorrect="off"></div>
     <div class="balf-row">
       <div><label class="form-label">Type</label>
         <select class="form-sel" id="balfKind" onchange="balfKindChange()">${kindOpts}</select></div>
@@ -2156,14 +2156,22 @@ function renderInsights(exps, total, ct) {
   const runway  = FI_TARGET>0 ? liqBal/FI_TARGET : 0;
   const fmt     = n => Math.round(n).toLocaleString();
 
-  // (a) Grow runway
-  if (FI_TARGET>0 && BALANCES.length>0) {
-    const ms = runway<3 ? 3 : runway<6 ? 6 : 0;
-    if (ms) {
-      const gap     = Math.max(0, ms*FI_TARGET - liqBal);
-      const monthly = Math.ceil(gap/6/10)*10;
-      notes.push({type:'warn', text:`Runway is ${runway.toFixed(1)} months. $${fmt(gap)} short of ${ms} months. Save about $${fmt(monthly)}/mo to get there in 6 months.`});
+  // Pace: avg of last 3 completed months of saved entries (including zero months)
+  const _sumSav = ym => allData.filter(e=>e.type==='saved'&&e.date&&e.date.slice(0,7)===ym).reduce((s,e)=>s+e.amount,0);
+  const _paceVals = [1,2,3].map(i => { const d=new Date(today); d.setMonth(d.getMonth()-i); return _sumSav(d.toISOString().slice(0,7)); });
+  const pace = _paceVals.reduce((s,v)=>s+v,0) / 3;
+
+  // (a) Milestone ladder [3,6,9,12,18,24] — skip when runway >= 24
+  const MILESTONES = [3,6,9,12,18,24];
+  const nextMs = MILESTONES.find(m => m > runway);
+  if (FI_TARGET>0 && BALANCES.length>0 && nextMs !== undefined) {
+    const gap = Math.max(0, nextMs*FI_TARGET - liqBal);
+    let text = `Runway is ${runway.toFixed(1)} months. $${fmt(gap)} to the ${nextMs}-month goal.`;
+    if (pace > 0) {
+      const mo = Math.ceil(gap / pace);
+      text += ` About ${mo} month${mo===1?'':'s'} at your pace.`;
     }
+    notes.push({type:'warn', text});
   }
 
   // (b) Data issues — at most one, first that applies
@@ -2202,15 +2210,50 @@ function renderInsights(exps, total, ct) {
     if (gap6>0) notes.push({type:'info', text:`Runway hit 3 months. Decide where new savings go next: 6 months needs $${fmt(gap6)} more.`});
   }
 
+  // Next check-in line — always shown, muted, last
+  const hasFlag = notes.some(n=>n.type==='flag');
+  const _fmtD = d => {
+    const opts = {month:'short', day:'numeric'};
+    if (d.getFullYear() !== today.getFullYear()) opts.year = 'numeric';
+    return d.toLocaleDateString('en-US', opts);
+  };
+  const ciCandidates = [];
+  // Month close
+  const daysLeft = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate() - today.getDate();
+  if (daysLeft <= 7) {
+    ciCandidates.push({date: new Date(today.getFullYear(), today.getMonth()+1, 1), reason: 'The month closes. Log the last savings and spending so the rate is accurate.'});
+  }
+  // Balance check-in: oldest asOf + 45 days, only if within 35 days of today
+  const balWithAsOf = BALANCES.filter(b=>b.asOf);
+  if (balWithAsOf.length) {
+    const oldest = balWithAsOf.map(b=>({name:b.name, asOf:new Date(String(b.asOf).slice(0,10)+'T12:00:00')})).sort((a,b)=>a.asOf-b.asOf)[0];
+    const balCI = new Date(oldest.asOf.getTime() + 45*86400000);
+    if (Math.floor((balCI - today) / 86400000) <= 35) {
+      ciCandidates.push({date: balCI, reason: `${oldest.name} turns 45 days old. Update your balances.`});
+    }
+  }
+  // Milestone ETA: only if within 60 days
+  if (pace > 0 && nextMs !== undefined) {
+    const gap = nextMs * FI_TARGET - liqBal;
+    const daysToMs = (gap / pace) * 30;
+    if (daysToMs <= 60) {
+      ciCandidates.push({date: new Date(today.getTime() + daysToMs*86400000), reason: `You should hit ${nextMs} months of runway around now.`});
+    }
+  }
+  // Fallback
+  ciCandidates.push({date: new Date(today.getTime() + 14*86400000), reason: "Two weeks of data is enough to see whether this month's savings rate is holding."});
+
+  const soonest = ciCandidates.filter(c=>c.date>today).sort((a,b)=>a.date-b.date)[0];
+  let ciReason = soonest ? soonest.reason : "Two weeks of data is enough to see whether this month's savings rate is holding.";
+  if (hasFlag) ciReason = 'Fix the note above first. ' + ciReason;
+  const ciDate = soonest ? _fmtD(soonest.date) : _fmtD(new Date(today.getTime() + 14*86400000));
+  const checkInHtml = `<div class="insight-item"><div class="insight-dot" style="background:var(--border)"></div><div class="insight-body" style="color:var(--fg2)">Next check-in: ${ciDate}. ${ciReason}</div></div>`;
+
   const list = document.getElementById('insightsList');
   if (!list) return;
-  if (!notes.length) {
-    list.innerHTML = '<div class="insight-item"><div class="insight-dot good"></div><div class="insight-body">No action needed.</div></div>';
-    return;
-  }
   list.innerHTML = notes.slice(0,3).map(n=>
     `<div class="insight-item"><div class="insight-dot ${n.type}"></div><div class="insight-body">${n.text}</div></div>`
-  ).join('');
+  ).join('') + checkInHtml;
 }
 
 function acceptM1Redirect() {
