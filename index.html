@@ -799,7 +799,7 @@ function uid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 // ── STATE ─────────────────────────────────────────────────────────
 let selMonth = curMonth();
@@ -1333,9 +1333,12 @@ function renderBalances() {
 // ── BALANCES TAB ──────────────────────────────────────────────────
 function daysSince(dateStr) {
   if (!dateStr) return null;
-  const ms = new Date(String(dateStr).slice(0, 10) + 'T12:00:00').getTime();
-  if (isNaN(ms)) return null;
-  return Math.floor((Date.now() - ms) / 86400000);
+  const s = String(dateStr).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [ay, am, ad] = s.split('-').map(Number);
+  const t = new Date();
+  const diff = new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(ay, am-1, ad);
+  return Math.max(0, Math.round(diff / 86400000));
 }
 
 function renderBalancesTab() {
@@ -1517,7 +1520,7 @@ function saveBalForm() {
   // For new entries, reuse existing id if same name already exists (prevents accidental duplicates)
   let id = _balEditId;
   if (!id) {
-    const existing = BALANCES.find(b => b.name.trim().toLowerCase() === name.toLowerCase());
+    const existing = BALANCES.find(b => b.name.trim() === name.trim());
     id = existing ? existing.id : `bal-${Date.now()}`;
   }
   const row = { id, name, kind, balance, apy, shares, strike, cliff, note, asOf: todayStr(), updatedAt: Date.now() };
