@@ -523,6 +523,41 @@ body{
       <div class="form-title">⚙️ Settings</div>
       <p style="font-size:12px;color:var(--fg2);margin-bottom:4px">Update your income and FI target — changes reflect immediately on the Dashboard.</p>
 
+      <div class="sett-sep">Recurring</div>
+      <div id="settRecurringList" style="margin-bottom:8px"></div>
+      <button class="sec-btn" style="width:100%;margin-bottom:6px" onclick="addUsualFour()">Add my usual four</button>
+      <button class="sec-btn" style="width:100%;margin-bottom:14px" onclick="openRecurForm()">+ Add recurring</button>
+      <div id="settRecurForm" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px" id="settRecurFormTitle">Add Recurring</div>
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input class="form-input" id="rfName" autocapitalize="off" autocorrect="off" placeholder="e.g. Rent">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount ($)</label>
+          <input type="number" inputmode="decimal" class="form-input" id="rfAmount" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-sel" id="rfType">
+            <option value="expense">Expense</option>
+            <option value="saved">Savings</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Categories (comma-separated)</label>
+          <input class="form-input" id="rfCats" placeholder="Savings">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Day of month (1–28)</label>
+          <input type="number" class="form-input" id="rfDay" min="1" max="28" step="1" placeholder="1">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="submit-btn" style="flex:1" onclick="saveRecurForm()">Save</button>
+          <button class="sec-btn" style="flex:1" onclick="closeRecurForm()">Cancel</button>
+        </div>
+      </div>
+
       <div class="sett-sep">Income</div>
       <div class="form-group">
         <label class="form-label">Annual Gross Salary</label>
@@ -1860,6 +1895,7 @@ function isDuplicateRecurring(r, ym, data) {
     if (r.account && e.account === r.account) return true;
     const rCat = (r.categories||[])[0] || '';
     if (rCat && getCats(e).includes(rCat)) return true;
+    if (r.name && (e.note||'').toLowerCase().includes(r.name.toLowerCase())) return true;
     return false;
   });
 }
@@ -1884,6 +1920,114 @@ function checkRecurring() {
     addRec(entry); queueOp({op:'upsert',sheet:'Expenses',row:entry}); created=true;
   });
   if (created) { buildMonthSels(); buildHistFilters(); renderDash(); renderHist(); }
+}
+
+// ── RECURRING MANAGEMENT ──────────────────────────────────────────
+let _recurEditId = null;
+
+function renderRecurring() {
+  const el = document.getElementById('settRecurringList');
+  if (!el) return;
+  if (!RECURRING_LIST.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--fg2);padding:6px 0">No recurring entries yet.</div>';
+    return;
+  }
+  const today = new Date();
+  el.innerHTML = RECURRING_LIST.map(r => {
+    const day = r.day || 1;
+    const t = today.getDate() < day
+      ? new Date(today.getFullYear(), today.getMonth(), day)
+      : new Date(today.getFullYear(), today.getMonth()+1, day);
+    const nextRun = t.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    const paused = r.active === false ? ' <span style="color:var(--fg2);font-weight:400">(paused)</span>' : '';
+    const amt = (+r.amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    return `<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <div style="flex:1;min-width:120px">
+        <div style="font-size:13px;font-weight:600">${r.name}${paused}</div>
+        <div style="font-size:11px;color:var(--fg2)">$${amt} · ${r.type||'expense'} · day ${day} · next ${nextRun}</div>
+      </div>
+      <button class="sec-btn" style="padding:3px 8px;font-size:11px" onclick="openRecurForm('${r.id}')">Edit</button>
+      <button class="sec-btn" style="padding:3px 8px;font-size:11px" onclick="toggleRecurActive('${r.id}')">${r.active===false?'Resume':'Pause'}</button>
+      <button class="sec-btn" style="padding:3px 8px;font-size:11px;color:var(--red)" onclick="deleteRecurTemplate('${r.id}')">Delete</button>
+    </div>`;
+  }).join('');
+}
+
+function addUsualFour() {
+  const cats = new Set();
+  load().forEach(e => getCats(e).forEach(c => cats.add(c)));
+  const carCat = ['Transportation','Auto','Car','Vehicle'].find(c => cats.has(c)) || 'Other';
+  const four = [
+    {id:'rec-sofi', name:'SoFi savings', amount:1200, type:'saved', categories:['Savings'], day:1, active:true},
+    {id:'rec-roth', name:'Vanguard Roth IRA', amount:583.33, type:'saved', categories:['Roth IRA'], day:1, active:true},
+    {id:'rec-m1', name:'M1 cash', amount:700, type:'saved', categories:['Savings'], day:1, active:true},
+    {id:'rec-car', name:'Car', amount:400, type:'expense', categories:[carCat], day:1, active:true},
+  ];
+  let added = 0;
+  four.forEach(t => { if (!RECURRING_LIST.find(r => r.id === t.id)) { RECURRING_LIST.push(t); added++; } });
+  if (!added) { showToast('All four already exist'); return; }
+  CONFIG.recurring = RECURRING_LIST;
+  queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
+  renderRecurring();
+  showToast(`${added} template${added===1?'':'s'} added`);
+  checkRecurring();
+}
+
+function openRecurForm(id) {
+  _recurEditId = id || null;
+  const r = id ? RECURRING_LIST.find(x => x.id === id) : null;
+  document.getElementById('settRecurFormTitle').textContent = r ? 'Edit Recurring' : 'Add Recurring';
+  document.getElementById('rfName').value   = r ? r.name : '';
+  document.getElementById('rfAmount').value = r ? r.amount : '';
+  document.getElementById('rfType').value   = r ? (r.type||'expense') : 'expense';
+  document.getElementById('rfCats').value   = r ? (r.categories||[]).join(', ') : '';
+  document.getElementById('rfDay').value    = r ? (r.day||1) : 1;
+  document.getElementById('rfName').style.borderColor = '';
+  document.getElementById('settRecurForm').style.display = 'block';
+  document.getElementById('rfName').focus();
+}
+
+function closeRecurForm() {
+  document.getElementById('settRecurForm').style.display = 'none';
+  _recurEditId = null;
+}
+
+function saveRecurForm() {
+  const name = (document.getElementById('rfName').value||'').trim();
+  if (!name) { document.getElementById('rfName').style.borderColor = 'var(--red)'; return; }
+  const amount     = parseFloat(document.getElementById('rfAmount').value) || 0;
+  const type       = document.getElementById('rfType').value;
+  const catsRaw    = (document.getElementById('rfCats').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const categories = catsRaw.length ? catsRaw : ['Other'];
+  const day        = Math.min(28, Math.max(1, parseInt(document.getElementById('rfDay').value)||1));
+  const id         = _recurEditId || `rec-${Date.now()}`;
+  const template   = {id, name, amount, type, categories, day, active: true};
+  const idx        = RECURRING_LIST.findIndex(r => r.id === id);
+  if (idx >= 0) RECURRING_LIST[idx] = template; else RECURRING_LIST.push(template);
+  CONFIG.recurring = RECURRING_LIST;
+  queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
+  closeRecurForm();
+  renderRecurring();
+  showToast('Saved');
+  checkRecurring();
+}
+
+function toggleRecurActive(id) {
+  const r = RECURRING_LIST.find(x => x.id === id);
+  if (!r) return;
+  r.active = r.active === false;
+  CONFIG.recurring = RECURRING_LIST;
+  queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
+  renderRecurring();
+  showToast(r.active ? 'Resumed' : 'Paused');
+}
+
+function deleteRecurTemplate(id) {
+  RECURRING_LIST = RECURRING_LIST.filter(r => r.id !== id);
+  CONFIG.recurring = RECURRING_LIST;
+  queueOp({op:'config_set', sheet:'Config', key:'recurring', value: RECURRING_LIST});
+  renderRecurring();
+  showToast('Deleted');
 }
 
 // ── SWIPE-TO-DELETE (touch delegation on histList) ────────────────
@@ -2213,6 +2357,14 @@ function renderInsights(exps, total, ct) {
     if (gap6>0) notes.push({type:'info', text:`Runway hit 3 months. Decide where new savings go next: 6 months needs $${fmt(gap6)} more.`});
   }
 
+  // (d) Bad Roth auto-entries ($538.33 typo)
+  if (notes.length<3) {
+    const rothBad = allData.filter(e => e.id && e.id.startsWith('rec-roth-') && Math.abs(e.amount - 538.33) < 0.01);
+    if (rothBad.length) {
+      notes.push({type:'flag', text:`${rothBad.length} Roth ${rothBad.length===1?'entry is':'entries are'} $538.33, not $583.33. Fix them.`, actions:[{label:'Fix', fn:'fixRothEntries'}]});
+    }
+  }
+
   // Next check-in line — always shown, muted, last
   const hasFlag = notes.some(n=>n.type==='flag');
   const _fmtD = d => {
@@ -2254,9 +2406,34 @@ function renderInsights(exps, total, ct) {
 
   const list = document.getElementById('insightsList');
   if (!list) return;
-  list.innerHTML = notes.slice(0,3).map(n=>
-    `<div class="insight-item"><div class="insight-dot ${n.type}"></div><div class="insight-body">${n.text}</div></div>`
-  ).join('') + checkInHtml;
+  list.innerHTML = notes.slice(0,3).map(n => {
+    const acts = (n.actions||[]).map(a=>`<button class="insight-btn" onclick="${a.fn}()">${a.label}</button>`).join('');
+    return `<div class="insight-item"><div class="insight-dot ${n.type}"></div><div class="insight-body">${n.text}${acts?`<div class="insight-actions">${acts}</div>`:''}</div></div>`;
+  }).join('') + checkInHtml;
+}
+
+function fixRothEntries() {
+  const allData = load();
+  const rothBad = allData.filter(e => e.id && e.id.startsWith('rec-roth-') && Math.abs(e.amount - 538.33) < 0.01);
+  if (!rothBad.length) return;
+  rothBad.forEach(bad => {
+    const ym = bad.date.slice(0, 7);
+    const hasManual = allData.some(x =>
+      x.id !== bad.id && !x.id.startsWith('rec-roth-') && x.date.startsWith(ym) &&
+      (x.type||'expense') === 'saved' && getCats(x).includes('Roth IRA')
+    );
+    if (hasManual) {
+      markDelRec(bad.id);
+      delRec(bad.id);
+      queueOp({ op:'delete', id: bad.id });
+    } else {
+      const fixed = { ...bad, amount: 583.33 };
+      save(load().map(e => e.id === bad.id ? fixed : e));
+      queueOp({ op:'upsert', sheet:'Expenses', row: prepareForSync(fixed) });
+    }
+  });
+  renderDash(); renderHist();
+  showToast('Roth entries fixed', 'success');
 }
 
 function acceptM1Redirect() {
@@ -2280,6 +2457,7 @@ function declineM1Redirect() {
 
 // ── SETTINGS ─────────────────────────────────────────────────────
 function renderSettings() {
+  renderRecurring();
   document.getElementById('sAnnualGross').value = ANNUAL_GROSS;
   document.getElementById('sAnnualNet').value   = ANNUAL_NET;
   document.getElementById('sMonthlyNet').value  = NET_MONTHLY;
@@ -2443,7 +2621,14 @@ async function fetchFromSheet() {
       try { localStorage.setItem('mo_balances_cache', JSON.stringify(payload.balances)); } catch {}
       renderBalancesTab();
     }
+    // Config
+    if (payload.config && typeof payload.config === 'object') {
+      applyConfig(payload.config);
+      try { localStorage.setItem('mo_config_cache', JSON.stringify(payload.config)); } catch {}
+    }
     buildMonthSels(); buildHistFilters(); renderDash(); renderHist(); renderBalancesTab();
+    checkRecurring();
+    if (document.querySelector('#tab-settings.active')) renderRecurring();
     try { localStorage.setItem('mo_last_sync', new Date().toISOString()); localStorage.removeItem('mo_last_error'); } catch {}
     const q = getOutbox().length;
     setSyncState(q ? 'queued' : 'idle', q);

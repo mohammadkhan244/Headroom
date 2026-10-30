@@ -6,6 +6,7 @@
 const EXP_HEADERS = ['id','date','category','categories','amount','note','freq','type',
                      'reimbursable','reimb_status','recurring_id','account','createdAt'];
 const BAL_HEADERS = ['id','name','kind','balance','apy','shares','strike','cliff','note','asOf','updatedAt'];
+const CFG_HEADERS = ['key','value'];
 
 const SHEET_SECRET = PropertiesService.getScriptProperties().getProperty('SHEET_SECRET');
 
@@ -14,7 +15,11 @@ function doGet(e) {
   if ((e.parameter.secret || '') !== SHEET_SECRET) return unauthorized();
   // ?sheet=all → return both expenses and balances in one call
   if (e.parameter.sheet === 'all') {
-    return ok({ ok: true, rows: sheetToRows(getSheet('Expenses', EXP_HEADERS)), balances: sheetToRows(getSheet('Balances', BAL_HEADERS)) });
+    const cfg = {};
+    sheetToRows(getSheet('Config', CFG_HEADERS)).forEach(function(r) {
+      try { cfg[String(r.key)] = JSON.parse(String(r.value)); } catch(ex) { cfg[String(r.key)] = String(r.value); }
+    });
+    return ok({ ok: true, rows: sheetToRows(getSheet('Expenses', EXP_HEADERS)), balances: sheetToRows(getSheet('Balances', BAL_HEADERS)), config: cfg });
   }
   return ok({ ok: true, rows: sheetToRows(getSheet('Expenses', EXP_HEADERS)) });
 }
@@ -23,6 +28,16 @@ function doPost(e) {
   if (!e || !e.postData) return unauthorized();
   const body = JSON.parse(e.postData.contents);
   if ((body.secret || '') !== SHEET_SECRET) return unauthorized();
+  if (body.sheet === 'Config') {
+    if (body.op === 'config_set') {
+      const sh = getSheet('Config', CFG_HEADERS);
+      const val = (body.value === null || body.value === undefined) ? ''
+                : typeof body.value === 'string' ? body.value
+                : JSON.stringify(body.value);
+      upsertRow(sh, CFG_HEADERS, { id: body.key, key: body.key, value: val });
+    }
+    return ok({ ok: true });
+  }
   const isBalances = body.sheet === 'Balances';
   const sh = isBalances ? getSheet('Balances', BAL_HEADERS) : getSheet('Expenses', EXP_HEADERS);
   const hdrs = isBalances ? BAL_HEADERS : EXP_HEADERS;
