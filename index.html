@@ -2290,7 +2290,9 @@ function _dupNote(allData) {
         const ym  = key.split('_')[1];
         const mon = new Date(ym+'-01T12:00:00').toLocaleString('default',{month:'short'});
         const lbl = (a.type||'expense')==='saved' ? 'Savings' : getCats(a)[0];
-        return `Two similar entries in ${mon}: ${lbl} $${Math.round(a.amount).toLocaleString()} and ${lbl} $${Math.round(b.amount).toLocaleString()}. Delete one.`;
+        const text = `Two similar entries in ${mon}: ${lbl} $${Math.round(a.amount).toLocaleString()} and ${lbl} $${Math.round(b.amount).toLocaleString()}. Delete one.`;
+        const newerEntryId = (+b.createdAt||0) >= (+a.createdAt||0) ? b.id : a.id;
+        return {text, newerEntryId};
       }
     }
   }
@@ -2354,7 +2356,8 @@ function renderInsights(exps, total, ct) {
       } else {
         const dup = _dupNote(allData);
         if (dup) {
-          notes.push({type:'flag', text:dup});
+          const dupActs = dup.newerEntryId ? [{label:'Delete newer', fn:'deleteDupEntry', arg:`'${dup.newerEntryId}'`}] : [];
+          notes.push({type:'flag', text:dup.text, actions:dupActs});
         } else if (allData.length>0) {
           const last = allData.reduce((m,e)=>e.date>m?e.date:m,'');
           const days = last ? Math.floor((today-new Date(last+'T12:00:00'))/86400000) : 999;
@@ -2425,7 +2428,7 @@ function renderInsights(exps, total, ct) {
   const list = document.getElementById('insightsList');
   if (!list) return;
   list.innerHTML = notes.slice(0,3).map(n => {
-    const acts = (n.actions||[]).map(a=>`<button class="insight-btn" onclick="${a.fn}()">${a.label}</button>`).join('');
+    const acts = (n.actions||[]).map(a=>`<button class="insight-btn" onclick="${a.fn}(${a.arg||''})">${a.label}</button>`).join('');
     return `<div class="insight-item"><div class="insight-dot ${n.type}"></div><div class="insight-body">${n.text}${acts?`<div class="insight-actions">${acts}</div>`:''}</div></div>`;
   }).join('') + checkInHtml;
 }
@@ -2452,6 +2455,13 @@ function fixRothEntries() {
   });
   renderDash(); renderHist();
   showToast('Roth entries fixed', 'success');
+}
+
+function deleteDupEntry(id) {
+  delRec(id);
+  queueOp({op:'delete', id});
+  buildMonthSels(); buildHistFilters(); renderDash(); renderHist();
+  showToast('Duplicate entry deleted', 'success');
 }
 
 function acceptM1Redirect() {
