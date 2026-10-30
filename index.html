@@ -1172,7 +1172,8 @@ function monthExp(m) { return load().filter(e=>e.date.startsWith(m)); }
 function renderDash() {
   const exps      = monthExp(selMonth);
   const expItems  = exps.filter(e => (e.type||'expense') === 'expense');
-  const savedItems= exps.filter(e => e.type === 'saved');
+  const seenSaved = new Set();
+  const savedItems = exps.filter(e => e.type === 'saved').filter(e => { const k = e.recurring_id || `${e.date.slice(0,7)}-${e.amount}-${(e.note||'').slice(0,20)}`; return seenSaved.has(k) ? false : !!seenSaved.add(k); });
   const spentAll  = expItems.reduce((s,e)=>s+e.amount, 0);
   const spent     = COUNT_BUSINESS_IN_FI
     ? spentAll
@@ -1900,6 +1901,7 @@ function isDuplicateRecurring(r, ym, data) {
     if ((e.type||'expense') !== (r.type||'expense')) return false;
     const amtMatch = Math.abs(e.amount - r.amount) / Math.max(r.amount, 1) <= 0.15;
     if (!amtMatch) return false;
+    if ((r.type||'expense') === 'saved') return true; // same month + type + close amount = dup
     if (r.account && e.account === r.account) return true;
     const rCat = (r.categories||[])[0] || '';
     if (rCat && getCats(e).includes(rCat)) return true;
@@ -2130,7 +2132,7 @@ function renderTrendChart() {
     const d=new Date(); d.setMonth(d.getMonth()-i);
     const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
     labels.push(monthLabel(ym).split(' ')[0]);
-    totals.push(load().filter(e=>e.date.startsWith(ym)).reduce((s,e)=>s+e.amount,0));
+    totals.push(load().filter(e=>e.date.startsWith(ym)&&(e.type||'expense')!=='saved').reduce((s,e)=>s+e.amount,0));
   }
   chartTrend = new Chart(ctx, {
     type:'bar',
